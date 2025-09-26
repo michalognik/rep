@@ -36,6 +36,56 @@
     const colorEl     = byId('stb-color');
     const cornerEl    = byId('stb-corner');
 
+    // Usuń stary kontener DIECUT (obrys po alfa PNG) – zostawiamy tylko sekcję „obrys i tło”
+    (function removeLegacyDiecutBox(){
+      const root = document.getElementById('stb-root') || document;
+      if (!root) return;
+
+      const titleMatcher = /die[\s-]*cut\s*\(obrys po alfa png\)/i;
+      const hintMatcher  = /trybie\s+die[\s-]*cut\s+akceptujemy\s+tylko\s+png/i;
+
+      function collectLegacyNodes(){
+        const nodes = new Set();
+        root.querySelectorAll('*').forEach(el => {
+          if (!el || el.children?.length > 150) return;
+          const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+          if (!text) return;
+          if (!titleMatcher.test(text) && !hintMatcher.test(text)) return;
+          const removable = el.closest(
+            '.stb-row, .acc__item, .stb-section, .stb-box, .stb-field, fieldset, .elementor-widget'
+          ) || el;
+          if (!removable || removable.dataset?.stbLegacyDiecutRemoved === '1') return;
+          nodes.add(removable);
+        });
+        return nodes;
+      }
+
+      function purge(){
+        const nodes = collectLegacyNodes();
+        if (!nodes || !nodes.size) return;
+        nodes.forEach(node => {
+          node.dataset.stbLegacyDiecutRemoved = '1';
+          node.remove();
+        });
+      }
+
+      purge();
+
+      // Na stronach z builderem HTML potrafi być przepisywany dynamicznie (np. Elementor)
+      // — dla pewności obserwujemy zmiany DOM i reagujemy tylko raz na znalezione elementy.
+      const observer = new MutationObserver(() => {
+        const nodes = collectLegacyNodes();
+        if (!nodes || !nodes.size) return;
+        nodes.forEach(node => node.remove());
+      });
+
+      observer.observe(root, { childList:true, subtree:true });
+
+      // Odłącz observer, gdy builder zostanie usunięty z DOM (np. zmiana widoku SPA).
+      const stop = () => observer.disconnect();
+      window.addEventListener('beforeunload', stop, { once:true });
+    })();
+
     // Grafika
     const imgEl    = byId('stb-image');
     const upBtn    = byId('stb-upload');
@@ -384,11 +434,11 @@
     // 360° dylatacja z marginesem, by ring nie był ucinany na krawędziach
     function buildRingFromMask(mask, ringPx, color, radiusSoft){
       const w = mask.width, h = mask.height;
-      const R = Math.max(1, Math.ceil(ringPx || 1));
+      const spread = Math.max(1, Math.ceil(Math.max(0, ringPx || 0)));
 
       const out = document.createElement('canvas');
-      out.width = w + 2*R;
-      out.height = h + 2*R;
+      out.width = w + 2*spread;
+      out.height = h + 2*spread;
       const octx = out.getContext('2d');
       octx.imageSmoothingEnabled = false;
 
@@ -402,12 +452,17 @@
       cctx.fillRect(0, 0, w, h);
       cctx.globalCompositeOperation = 'source-over';
 
-      for (let dy = -R; dy <= R; dy++){
-        const dxLim = Math.floor(Math.sqrt(R*R - dy*dy));
+      for (let dy = -spread; dy <= spread; dy++){
+        const dxLim = Math.floor(Math.sqrt(spread*spread - dy*dy));
         for (let dx = -dxLim; dx <= dxLim; dx++){
-          octx.drawImage(colored, R + dx, R + dy);
+          octx.drawImage(colored, spread + dx, spread + dy);
         }
       }
+
+      // usuń wypełnienie z wnętrza — zostaw tylko obrys
+      octx.globalCompositeOperation = 'destination-out';
+      octx.drawImage(mask, spread, spread);
+      octx.globalCompositeOperation = 'source-over';
 
       const soft = Math.max(0, parseFloat(radiusSoft||0));
       if (soft > 0){
@@ -527,7 +582,6 @@
 
       // ----- GRAFIKA -----
       if (shape === 'diecut' && uploaded.img){
-        const ringColor = outColorEl?.value || '#ff0000'; // sterujesz pickerem obrysu
         const fit = diecutSafePlacement(r, uploaded.img, (transform.scale||1), (transform.rotDeg||0), outlinePx, 2);
         const effScale = fit.scale;
         const offX = fit.clampOffsetX(transform.offsetX||0);
@@ -538,16 +592,46 @@
         const dw = Math.max(1, Math.round(iw * base * effScale));
         const dh = Math.max(1, Math.round(ih * base * effScale));
 
-        // maska z obrazu
-        const mask = document.createElement('canvas');
-        mask.width = dw; mask.height = dh;
-        const mctx = mask.getContext('2d');
-        mctx.imageSmoothingEnabled = false;
-        mctx.drawImage(uploaded.img, 0, 0, dw, dh);
+        let ringCanvas = null;
+        let pad = 0;
+        if (outlinePx > 0){
+          const mask = document.createElement('canvas');
+          mask.width = dw; mask.height = dh;
+          const mctx = mask.getContext('2d');
+          mctx.imageSmoothingEnabled = false;
+          mctx.drawImage(uploaded.img, 0, 0, dw, dh);
 
-        // obrys z marginesem
-        const ringCanvas = buildRingFromMask(mask, outlinePx, ringColor, 0);
-        const pad = Math.max(1, Math.ceil(outlinePx));
+          let maskReady = true;
+          // Zamień kanał alfa na binarną maskę (każdy piksel widoczny -> 1)
+          try {
+            const imgData = mctx.getImageData(0, 0, dw, dh);
+            const buf = imgData.data;
+            let hasOpaque = false;
+            for (let i = 0; i < buf.length; i += 4){
+              const alpha = buf[i + 3];
+              if (alpha > 0){
+                buf[i] = 255; buf[i + 1] = 255; buf[i + 2] = 255; buf[i + 3] = 255;
+                hasOpaque = true;
+              } else {
+                buf[i] = 0; buf[i + 1] = 0; buf[i + 2] = 0; buf[i + 3] = 0;
+              }
+            }
+            if (hasOpaque){
+              mctx.putImageData(imgData, 0, 0);
+            } else {
+              maskReady = false;
+            }
+          } catch (err){
+            console.warn('diecut mask read failed', err);
+            maskReady = false;
+          }
+
+          if (maskReady){
+            const ringColor = outColorEl?.value || '#ff0000'; // sterujesz pickerem obrysu
+            ringCanvas = buildRingFromMask(mask, outlinePx, ringColor, 0);
+            pad = Math.max(1, Math.ceil(outlinePx));
+          }
+        }
 
         ctx.save();
         ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
@@ -563,12 +647,13 @@
         ctx.drawImage(uploaded.img, -dw/2, -dh/2, dw, dh);
         ctx.restore();
 
-        // obrys
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(rot);
-        ctx.drawImage(ringCanvas, -(dw/2 + pad), -(dh/2 + pad), dw + 2*pad, dh + 2*pad);
-        ctx.restore();
+        if (ringCanvas){
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(rot);
+          ctx.drawImage(ringCanvas, -(dw/2 + pad), -(dh/2 + pad), dw + 2*pad, dh + 2*pad);
+          ctx.restore();
+        }
 
         ctx.restore();
       } else if (uploaded.img){
@@ -1330,9 +1415,10 @@
         // grafika
         if (uploaded.img){
           if (shape==='diecut'){
+            const outlineEnabled = !!outOnEl?.checked;
             const outlineMM = Math.max(0, parseFloat(outMMEl?.value||'3'));
-            const ringPxPrev = pxPerCm(rPrev) * (outlineMM/10);
-            const ringPxOut  = Math.max(1, Math.round(ringPxPrev * ((kx+ky)/2)));
+            const ringPxPrev = outlineEnabled ? (pxPerCm(rPrev) * (outlineMM/10)) : 0;
+            const ringPxOut  = ringPxPrev > 0 ? Math.max(1, Math.round(ringPxPrev * ((kx+ky)/2))) : 0;
 
             const iw = uploaded.img.width, ih = uploaded.img.height;
             const basePrev = Math.max(rPrev.w/iw, rPrev.h/ih);
@@ -1343,16 +1429,47 @@
             const dwPrev = Math.max(1, Math.round(iw * basePrev * effScale));
             const dhPrev = Math.max(1, Math.round(ih * basePrev * effScale));
 
-            // maska w skali eksportu
-            const mask = document.createElement('canvas');
-            mask.width = Math.round(dwPrev * ((kx+ky)/2));
-            mask.height= Math.round(dhPrev * ((kx+ky)/2));
-            const mctx = mask.getContext('2d');
-            mctx.imageSmoothingEnabled = false;
-            mctx.drawImage(uploaded.img, 0, 0, mask.width, mask.height);
+            const dwExport = Math.max(1, Math.round(dwPrev * ((kx+ky)/2)));
+            const dhExport = Math.max(1, Math.round(dhPrev * ((kx+ky)/2)));
 
-            const ringCanvas = buildRingFromMask(mask, ringPxOut, outColorEl?.value || '#ff0000', 0);
-            const pad = Math.max(1, Math.ceil(ringPxOut));
+            let ringCanvas = null;
+            let pad = 0;
+            if (ringPxOut > 0){
+              const mask = document.createElement('canvas');
+              mask.width = dwExport; mask.height = dhExport;
+              const mctx = mask.getContext('2d');
+              mctx.imageSmoothingEnabled = false;
+              mctx.drawImage(uploaded.img, 0, 0, dwExport, dhExport);
+
+              let maskReady = true;
+              try {
+                const imgData = mctx.getImageData(0, 0, dwExport, dhExport);
+                const buf = imgData.data;
+                let hasOpaque = false;
+                for (let i = 0; i < buf.length; i += 4){
+                  const alpha = buf[i + 3];
+                  if (alpha > 0){
+                    buf[i] = 255; buf[i + 1] = 255; buf[i + 2] = 255; buf[i + 3] = 255;
+                    hasOpaque = true;
+                  } else {
+                    buf[i] = 0; buf[i + 1] = 0; buf[i + 2] = 0; buf[i + 3] = 0;
+                  }
+                }
+                if (hasOpaque){
+                  mctx.putImageData(imgData, 0, 0);
+                } else {
+                  maskReady = false;
+                }
+              } catch(err){
+                console.warn('diecut export mask read failed', err);
+                maskReady = false;
+              }
+
+              if (maskReady){
+                ringCanvas = buildRingFromMask(mask, ringPxOut, outColorEl?.value || '#ff0000', 0);
+              }
+              pad = Math.max(1, Math.ceil(ringPxOut));
+            }
 
             const cxPrev = rPrev.x + rPrev.w/2 + fit.clampOffsetX(transform.offsetX||0);
             const cyPrev = rPrev.y + rPrev.h/2 + fit.clampOffsetY(transform.offsetY||0);
@@ -1366,15 +1483,16 @@
             octx.save();
             octx.translate(cx, cy);
             octx.rotate(rot);
-            octx.drawImage(uploaded.img, -mask.width/2, -mask.height/2, mask.width, mask.height);
+            octx.drawImage(uploaded.img, -dwExport/2, -dhExport/2, dwExport, dhExport);
             octx.restore();
 
-            // obrys
-            octx.save();
-            octx.translate(cx, cy);
-            octx.rotate(rot);
-            octx.drawImage(ringCanvas, -(mask.width/2 + pad), -(mask.height/2 + pad), mask.width + 2*pad, mask.height + 2*pad);
-            octx.restore();
+            if (ringCanvas){
+              octx.save();
+              octx.translate(cx, cy);
+              octx.rotate(rot);
+              octx.drawImage(ringCanvas, -(dwExport/2 + pad), -(dhExport/2 + pad), dwExport + 2*pad, dhExport + 2*pad);
+              octx.restore();
+            }
 
           } else {
             // inne kształty — jak w podglądzie
