@@ -101,22 +101,6 @@ if ( ! defined( 'ABSPATH' ) ) {
                     </div>
                 </section>
 
-                <section class="list-section">
-                    <span class="label">Materiał</span>
-                    <div class="stb-row">
-                        <label class="stb-field" style="flex:1 1 auto;">
-                            <span class="stb-lbl">Rodzaj folii</span>
-                            <select id="stb-material">
-                                <option value="Folia ekonomiczna">Folia ekonomiczna (monomeryczna)</option>
-                                <option value="Folia długowieczna">Folia długowieczna (polimerowa)</option>
-                            </select>
-                        </label>
-                        <label class="stb-inline" style="margin-top:6px; gap:6px;">
-                            <input type="checkbox" id="stb-laminate">
-                            <span>Laminat ochronny</span>
-                        </label>
-                    </div>
-                </section>
             </div>
 
             <div class="price-col price-in-order">
@@ -201,7 +185,7 @@ if ( ! defined( 'ABSPATH' ) ) {
                         <button type="button" class="acc__head" aria-expanded="false">Grafika</button>
                         <div class="acc__body" hidden>
                             <div class="stb-row">
-                                <input type="file" id="stb-image" accept="image/*,.pdf" hidden>
+                                <input type="file" id="stb-image" accept="image/*,.pdf" class="stb-file-input" hidden>
                                 <div class="stb-inline">
                                     <button type="button" class="btn" id="stb-upload">Wgraj plik</button>
                                     <button type="button" class="btn" id="stb-img-clear">Usuń plik</button>
@@ -212,6 +196,25 @@ if ( ! defined( 'ABSPATH' ) ) {
                                     <p id="stb-fmeta"></p>
                                 </div>
                                 <p id="stb-file-hint" class="stb-hint"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="acc__item" id="acc-material">
+                        <button type="button" class="acc__head" aria-expanded="false">Materiał</button>
+                        <div class="acc__body" hidden>
+                            <div class="stb-row">
+                                <label class="stb-field" style="flex:1 1 auto;">
+                                    <span class="stb-lbl">Rodzaj folii</span>
+                                    <select id="stb-material">
+                                        <option value="Folia ekonomiczna">Folia ekonomiczna (monomeryczna)</option>
+                                        <option value="Folia długowieczna">Folia długowieczna (polimerowa)</option>
+                                    </select>
+                                </label>
+                                <label class="stb-inline" style="margin-top:6px; gap:6px;">
+                                    <input type="checkbox" id="stb-laminate">
+                                    <span>Laminat ochronny</span>
+                                </label>
                             </div>
                         </div>
                     </div>
