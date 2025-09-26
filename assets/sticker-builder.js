@@ -122,6 +122,7 @@
     const tbRotMinus= byId('tb-rot--');
     const tbRotPlus = byId('tb-rot-+');
     const tbGrid    = byId('tb-grid');
+    const tbDelete  = byId('tb-delete');
     const tbPDF     = byId('tb-pdf');
 
     // Pasek postępu PDF
@@ -178,7 +179,6 @@
     const textReset   = byId('stb-text-reset');
 
     // QR — proste UI
-    const qrAddBtn  = byId('stb-qr-add-btn');
     const qrRemBtn  = byId('stb-qr-remove-btn');
     const qrTypeSel = byId('stb-qr-type');   // url | wifi
     const qrDark    = byId('stb-qr-dark');
@@ -219,8 +219,25 @@
       canvas:null
     };
 
-    // Ostatni cel toolbara (image/qr)
     let lastToolTarget = 'image';
+    let qrLibMissingWarned = false;
+
+    const hasText = ()=> !!(textObj.text && textObj.text.trim().length);
+
+    function defaultToolTarget(){
+      if (uploaded.img) return 'image';
+      if (hasText()) return 'text';
+      if (qrObj.enabled) return 'qr';
+      return 'image';
+    }
+
+    function setToolTarget(target){
+      if (target === 'image' && uploaded.img){ lastToolTarget = 'image'; return lastToolTarget; }
+      if (target === 'text' && hasText()){ lastToolTarget = 'text'; return lastToolTarget; }
+      if (target === 'qr' && qrObj.enabled){ lastToolTarget = 'qr'; return lastToolTarget; }
+      lastToolTarget = defaultToolTarget();
+      return lastToolTarget;
+    }
 
     /* ===== Akordeony ===== */
     function initAccordions(){
@@ -331,20 +348,46 @@
     /* ===== QR (davidshimjs) ===== */
     function currentQRText(){
       const type = (qrTypeSel?.value || 'url');
-      if (type==='url')  return (qrURL?.value||'').trim();
+      if (type==='url'){
+        const url = (qrURL?.value || '').trim();
+        return url;
+      }
       if (type==='wifi'){
+        const rawSSID = (qrWifiSSID?.value || '').trim();
+        const rawPass = (qrWifiPass?.value || '').trim();
+        if (!rawSSID) return '';
         const esc=(s)=> (s||'').replace(/([\\;,:"])/g,'\\$1');
-        const ssid=esc(qrWifiSSID?.value), pass=esc(qrWifiPass?.value), auth=(qrWifiAuth?.value||'WPA');
+        const ssid=esc(rawSSID);
+        const pass=esc(rawPass);
+        const auth=(qrWifiAuth?.value||'WPA');
         const hidden = (qrWifiHidden?.checked ? 'H:true;' : '');
-        const pwd = (auth==='nopass') ? '' : `P:${pass};`;
+        const pwd = (auth==='nopass' || !rawPass) ? '' : `P:${pass};`;
         return `WIFI:S:${ssid};T:${auth};${pwd}${hidden};`;
       }
       return '';
     }
+    function syncQRStateFromInputs(){
+      const content = currentQRText();
+      const shouldEnable = !!content;
+      const wasEnabled = qrObj.enabled;
+      qrObj.enabled = shouldEnable;
+      if (shouldEnable){
+        setToolTarget('qr');
+      } else if (wasEnabled && lastToolTarget === 'qr'){
+        setToolTarget(null);
+      }
+      if (shouldEnable && !QRCodeLib && !qrLibMissingWarned){
+        alert('Nie można wygenerować QR: biblioteka QR (davidshimjs) nie została wczytana.');
+        qrLibMissingWarned = true;
+      }
+      if (qrRemBtn) qrRemBtn.style.display = shouldEnable ? '' : 'none';
+      rebuildQR();
+    }
+
     function updateQRTypeUI(){
       const typ = (qrTypeSel?.value || 'url');
       $$('[data-qr-section]').forEach(el=>{ el.hidden = (el.getAttribute('data-qr-section') !== typ); });
-      rebuildQR();
+      syncQRStateFromInputs();
     }
 
     // davidshimjs nie ma natywnego „quiet zone”, więc dodamy margines sami
@@ -792,7 +835,7 @@
       }
       if (!dragMode) return;
 
-      lastToolTarget = (dragMode==='qr') ? 'qr' : (dragMode==='image' ? 'image' : lastToolTarget);
+      setToolTarget(dragMode);
 
       dragStart = p;
       if (dragMode==='qr') offsetStart = { x: qrObj.offsetX, y: qrObj.offsetY };
@@ -830,6 +873,18 @@
     window.addEventListener('mouseup', endDrag);
     window.addEventListener('touchend', endDrag);
 
+    function selectByPoint(e){
+      const p = getPos(e);
+      const cv = toCanvasXY(p);
+      const qb = qrBoundingBox();
+      if (qb && pointInRotatedBox(cv.x, cv.y, qb)){ setToolTarget('qr'); return; }
+      const tb = textBoundingBox();
+      if (tb && pointInRotatedBox(cv.x, cv.y, tb)){ setToolTarget('text'); return; }
+      if (uploaded.img) setToolTarget('image');
+      else setToolTarget(null);
+    }
+    canvas.addEventListener('click', selectByPoint);
+
     /* ===== Upload/Pliki ===== */
     function prettyMeta(pxW, pxH, mime, sizeBytes, extra=''){
       const w_cm=parseNum(wEl,10), h_cm=parseNum(hEl,10);
@@ -854,6 +909,7 @@
       if (fName) fName.textContent='brak pliku';
       if (fMeta) fMeta.textContent='';
       transform={scale:1,offsetX:0,offsetY:0,rotDeg:0};
+      if (lastToolTarget === 'image') setToolTarget(null);
       requestDraw();
     }
     if (upBtn){
@@ -907,6 +963,7 @@
             uploaded = { name, type:(f.type||'application/pdf'), size:(f.size||0), dataURL, img, pdf:{ numPages: pdf.numPages||1 } };
             transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
             updateFileMeta(c.width, c.height, (f.type||'application/pdf'), (f.size||0), `PDF • ${pdf.numPages||1} str.`);
+            setToolTarget('image');
             requestDraw();
           };
           img.src = dataURL;
@@ -927,6 +984,7 @@
           uploaded = { name, type:(f.type||''), size:(f.size||0), dataURL, img, pdf:null };
           transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
           updateFileMeta(img.naturalWidth||img.width, img.naturalHeight||img.height, (f.type||''), (f.size||0));
+          setToolTarget('image');
           requestDraw();
         };
         img.src = dataURL;
@@ -987,45 +1045,58 @@
     if (laminateEl) laminateEl.addEventListener('change', ()=>{ updatePriceAndJSON(); refreshQtyPrices(); updateSummaryMeta(); requestDraw(); });
 
     /* ===== Tekst ===== */
-    if (textInput){ textInput.addEventListener('input', ()=>{ textObj.text = textInput.value || ''; requestDraw(); }); }
-    if (textFontSel){ textFontSel.addEventListener('change', ()=>{ textObj.font = textFontSel.value || 'Inter'; requestDraw(); }); }
-    if (textColorEl){ textColorEl.addEventListener('input', ()=>{ textObj.color = textColorEl.value || '#111111'; requestDraw(); }); }
+    if (textInput){
+      textInput.addEventListener('focus', ()=> setToolTarget('text'));
+      textInput.addEventListener('input', ()=>{
+        textObj.text = textInput.value || '';
+        if (hasText()) setToolTarget('text');
+        else if (lastToolTarget === 'text') setToolTarget(null);
+        requestDraw();
+      });
+    }
+    if (textFontSel){
+      textFontSel.addEventListener('change', ()=>{
+        textObj.font = textFontSel.value || 'Inter';
+        if (hasText()) setToolTarget('text');
+        requestDraw();
+      });
+    }
+    if (textColorEl){
+      textColorEl.addEventListener('input', ()=>{
+        textObj.color = textColorEl.value || '#111111';
+        if (hasText()) setToolTarget('text');
+        requestDraw();
+      });
+    }
     if (textClear){
       textClear.addEventListener('click', ()=>{
         textObj = { text:'', font:(textFontSel?.value||'Inter'), color:(textColorEl?.value||'#111111'), scale:1, rotDeg:0, offsetX:0, offsetY:0 };
         if (textInput) textInput.value = '';
+        if (lastToolTarget === 'text') setToolTarget(null);
         requestDraw();
       });
     }
-    if (textCenter){ textCenter.addEventListener('click', ()=>{ textObj.offsetX=0; textObj.offsetY=0; requestDraw(); }); }
+    if (textCenter){ textCenter.addEventListener('click', ()=>{ setToolTarget('text'); textObj.offsetX=0; textObj.offsetY=0; requestDraw(); }); }
     if (textReset){
       textReset.addEventListener('click', ()=>{
         textObj.scale=1; textObj.rotDeg=0;
+        setToolTarget('text');
         requestDraw();
       });
     }
 
     /* ===== QR UI ===== */
     function bindQR(){
-      if (qrAddBtn){
-        qrAddBtn.addEventListener('click', ()=>{
-          if (!QRCodeLib){
-            alert('Nie można dodać QR: biblioteka QR (davidshimjs) nie została wczytana.');
-            return;
-          }
-          qrObj.enabled = true;
-          if (qrAddBtn)  qrAddBtn.style.display = 'none';
-          if (qrRemBtn)  qrRemBtn.style.display = '';
-          rebuildQR();
-        });
-      }
       if (qrRemBtn){
         qrRemBtn.addEventListener('click', ()=>{
           qrObj.enabled = false;
           qrObj.canvas = null;
-          if (qrAddBtn)  qrAddBtn.style.display = '';
-          if (qrRemBtn)  qrRemBtn.style.display = 'none';
-          requestDraw();
+          if (qrURL) qrURL.value = '';
+          if (qrWifiSSID) qrWifiSSID.value = '';
+          if (qrWifiPass) qrWifiPass.value = '';
+          if (qrWifiHidden) qrWifiHidden.checked = false;
+          setToolTarget(null);
+          syncQRStateFromInputs();
         });
       }
       if (qrTypeSel) qrTypeSel.addEventListener('change', updateQRTypeUI);
@@ -1034,24 +1105,25 @@
       [qrDark, qrLight, qrECC, qrQuiet].forEach(el=>{
         if (!el) return;
         const evt = (el.type==='range' || el.type==='color' || el.tagName==='SELECT') ? 'input' : 'change';
-        el.addEventListener(evt, rebuildQR);
+        el.addEventListener(evt, ()=>{
+          if (!qrObj.enabled) return;
+          setToolTarget('qr');
+          rebuildQR();
+        });
       });
 
       // Dane
       [qrURL, qrWifiSSID, qrWifiPass, qrWifiAuth, qrWifiHidden].forEach(el=>{
         if (!el) return;
         const evt = (el.type==='checkbox' || el.tagName==='SELECT') ? 'change' : 'input';
-        el.addEventListener(evt, rebuildQR);
+        el.addEventListener(evt, syncQRStateFromInputs);
       });
 
       // Obrys QR
-      if (qrOutlineOn) qrOutlineOn.addEventListener('change', ()=>{ qrObj.outline.enabled = !!qrOutlineOn.checked; requestDraw(); });
-      if (qrOutlineColor) qrOutlineColor.addEventListener('input', ()=>{ qrObj.outline.color = qrOutlineColor.value || '#111111'; requestDraw(); });
-      if (qrOutlineWidth) qrOutlineWidth.addEventListener('input', ()=>{ qrObj.outline.widthPct = Math.max(0, parseFloat(qrOutlineWidth.value||'0')); requestDraw(); });
-      if (qrOutlineRadius) qrOutlineRadius.addEventListener('input', ()=>{ qrObj.outline.radiusPct = Math.max(0, parseFloat(qrOutlineRadius.value||'0')); requestDraw(); });
-
-      if (qrAddBtn)  qrAddBtn.style.display = qrObj.enabled ? 'none' : '';
-      if (qrRemBtn)  qrRemBtn.style.display = qrObj.enabled ? '' : 'none';
+      if (qrOutlineOn) qrOutlineOn.addEventListener('change', ()=>{ qrObj.outline.enabled = !!qrOutlineOn.checked; if (qrObj.enabled) setToolTarget('qr'); requestDraw(); });
+      if (qrOutlineColor) qrOutlineColor.addEventListener('input', ()=>{ qrObj.outline.color = qrOutlineColor.value || '#111111'; if (qrObj.enabled) setToolTarget('qr'); requestDraw(); });
+      if (qrOutlineWidth) qrOutlineWidth.addEventListener('input', ()=>{ qrObj.outline.widthPct = Math.max(0, parseFloat(qrOutlineWidth.value||'0')); if (qrObj.enabled) setToolTarget('qr'); requestDraw(); });
+      if (qrOutlineRadius) qrOutlineRadius.addEventListener('input', ()=>{ qrObj.outline.radiusPct = Math.max(0, parseFloat(qrOutlineRadius.value||'0')); if (qrObj.enabled) setToolTarget('qr'); requestDraw(); });
 
       updateQRTypeUI();
     }
@@ -1329,17 +1401,21 @@
 
     /* ===== Toolbar ===== */
     function toolbarTarget(){
+      if (lastToolTarget==='image' && uploaded.img) return 'image';
+      if (lastToolTarget==='text' && hasText()) return 'text';
       if (lastToolTarget==='qr' && qrObj.enabled) return 'qr';
-      if (uploaded.img) return 'image';
-      if (qrObj.enabled) return 'qr';
-      return 'image';
+      return defaultToolTarget();
     }
     function applyZoom(delta){
       const tgt = toolbarTarget();
+      setToolTarget(tgt);
       if (tgt==='qr'){
         const ns = (qrObj.scale || 1) * (1 + delta);
         qrObj.scale = Math.max(0.1, Math.min(6, ns));
-      }else{
+      } else if (tgt==='text'){
+        const ns = (textObj.scale || 1) * (1 + delta);
+        textObj.scale = Math.max(0.1, Math.min(6, ns));
+      } else {
         const ns = (transform.scale || 1) * (1 + delta);
         transform.scale = Math.max(0.1, Math.min(6, ns));
       }
@@ -1347,21 +1423,59 @@
     }
     function applyRotate(deltaDeg){
       const tgt = toolbarTarget();
+      setToolTarget(tgt);
       if (tgt==='qr'){
         qrObj.rotDeg = (qrObj.rotDeg || 0) + deltaDeg;
-      }else{
+      } else if (tgt==='text'){
+        textObj.rotDeg = (textObj.rotDeg || 0) + deltaDeg;
+      } else {
         transform.rotDeg = (transform.rotDeg || 0) + deltaDeg;
       }
       requestDraw();
     }
     function applyFit(){
       const tgt = toolbarTarget();
+      setToolTarget(tgt);
       if (tgt==='qr'){
         qrObj.offsetX = 0; qrObj.offsetY = 0; qrObj.scale = 1; qrObj.rotDeg = 0;
-      }else{
+      } else if (tgt==='text'){
+        textObj.offsetX = 0; textObj.offsetY = 0; textObj.scale = 1; textObj.rotDeg = 0;
+      } else {
         transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
       }
       requestDraw();
+    }
+
+    function deleteCurrentTarget(){
+      const tgt = toolbarTarget();
+      if (tgt === 'qr'){
+        setToolTarget('qr');
+        if (qrRemBtn) qrRemBtn.click();
+        else {
+          qrObj.enabled = false; qrObj.canvas = null;
+          if (qrURL) qrURL.value = '';
+          if (qrWifiSSID) qrWifiSSID.value = '';
+          if (qrWifiPass) qrWifiPass.value = '';
+          if (qrWifiHidden) qrWifiHidden.checked = false;
+          setToolTarget(null);
+          syncQRStateFromInputs();
+        }
+        return;
+      }
+      if (tgt === 'text'){
+        setToolTarget('text');
+        if (textClear) textClear.click();
+        else {
+          textObj = { text:'', font:(textFontSel?.value||'Inter'), color:(textColorEl?.value||'#111111'), scale:1, rotDeg:0, offsetX:0, offsetY:0 };
+          if (textInput) textInput.value='';
+          setToolTarget(null);
+          requestDraw();
+        }
+        return;
+      }
+      if (uploaded.img){
+        clearImage();
+      }
     }
 
     if (tbZoomOut) tbZoomOut.addEventListener('click', ()=> applyZoom(-0.1));
@@ -1370,6 +1484,7 @@
     if (tbRotPlus) tbRotPlus .addEventListener('click', ()=> applyRotate(+5));
     if (tbFit)     tbFit    .addEventListener('click', applyFit);
     if (tbGrid)    tbGrid   .addEventListener('click', ()=>{ gridOn=!gridOn; requestDraw(); });
+    if (tbDelete)  tbDelete .addEventListener('click', deleteCurrentTarget);
 
     /* ===== PDF 300 DPI ===== */
     let exportQRPromises = [];

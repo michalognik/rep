@@ -253,7 +253,6 @@ if ( ! defined( 'ABSPATH' ) ) {
                         <div class="acc__body" hidden>
                             <div class="stb-row">
                                 <div class="stb-inline">
-                                    <button type="button" class="btn btn-primary" id="stb-qr-add-btn">Dodaj kod QR</button>
                                     <button type="button" class="btn" id="stb-qr-remove-btn" style="display:none;">Usuń kod QR</button>
                                 </div>
                                 <div class="stb-inline">
@@ -342,13 +341,30 @@ if ( ! defined( 'ABSPATH' ) ) {
 
                 <div class="preview-panel">
                     <div class="stb-toolbar">
-                        <button type="button" class="btn" id="tb-zoom-out">Zoom -</button>
-                        <button type="button" class="btn" id="tb-zoom-in">Zoom +</button>
-                        <button type="button" class="btn" id="tb-fit">Dopasuj</button>
-                        <button type="button" class="btn" id="tb-rot--">Obróć -5°</button>
-                        <button type="button" class="btn" id="tb-rot-+">Obróć +5°</button>
-                        <button type="button" class="btn" id="tb-grid">Siatka</button>
-                        <button type="button" class="btn" id="tb-pdf">Eksport PDF</button>
+                        <button type="button" class="btn btn-icon" id="tb-zoom-out" title="Oddal" aria-label="Oddal">
+                            <span aria-hidden="true">−</span>
+                        </button>
+                        <button type="button" class="btn btn-icon" id="tb-zoom-in" title="Przybliż" aria-label="Przybliż">
+                            <span aria-hidden="true">+</span>
+                        </button>
+                        <button type="button" class="btn btn-icon" id="tb-fit" title="Wycentruj i dopasuj" aria-label="Wycentruj i dopasuj">
+                            <span aria-hidden="true">⤢</span>
+                        </button>
+                        <button type="button" class="btn btn-icon" id="tb-rot--" title="Obróć w lewo" aria-label="Obróć w lewo">
+                            <span aria-hidden="true">⟲</span>
+                        </button>
+                        <button type="button" class="btn btn-icon" id="tb-rot-+" title="Obróć w prawo" aria-label="Obróć w prawo">
+                            <span aria-hidden="true">⟳</span>
+                        </button>
+                        <button type="button" class="btn btn-icon" id="tb-grid" title="Pokaż/ukryj siatkę" aria-label="Pokaż lub ukryj siatkę">
+                            <span aria-hidden="true">⧉</span>
+                        </button>
+                        <button type="button" class="btn btn-icon" id="tb-delete" title="Usuń element" aria-label="Usuń element">
+                            <span aria-hidden="true">🗑</span>
+                        </button>
+                        <button type="button" class="btn btn-icon" id="tb-pdf" title="Eksportuj do PDF" aria-label="Eksportuj do PDF">
+                            <span aria-hidden="true">⤓</span>
+                        </button>
                     </div>
                     <div class="canvas-box">
                         <canvas id="stb-canvas" width="520" height="520" aria-label="Podgląd naklejki"></canvas>
