@@ -353,6 +353,55 @@
       // DIECUT używa prostokątnego obszaru podglądu (rysujemy specjalnie w draw)
       return ()=> polygonPath(ctx, [ {x:r.x,y:r.y}, {x:r.x+r.w,y:r.y}, {x:r.x+r.w,y:r.y+r.h}, {x:r.x,y:r.y+r.h} ], rad);
     }
+    function exportShapePath(targetCtx, rect){
+      const rad = Math.max(0, Math.min(rect.w, rect.h) * cornerFactor);
+      if (shape === 'circle'){
+        targetCtx.beginPath();
+        targetCtx.arc(rect.x + rect.w/2, rect.y + rect.h/2, Math.min(rect.w, rect.h)/2, 0, Math.PI*2);
+        targetCtx.closePath();
+        return;
+      }
+      if (shape === 'ellipse'){
+        targetCtx.beginPath();
+        targetCtx.ellipse(rect.x + rect.w/2, rect.y + rect.h/2, rect.w/2, (rect.h/2)*(ellipseRatio||1), 0, 0, Math.PI*2);
+        targetCtx.closePath();
+        return;
+      }
+      if (shape === 'triangle'){
+        targetCtx.beginPath();
+        polygonPath(targetCtx, [
+          {x:rect.x + rect.w/2, y:rect.y},
+          {x:rect.x + rect.w, y:rect.y + rect.h},
+          {x:rect.x, y:rect.y + rect.h}
+        ], rad);
+        targetCtx.closePath();
+        return;
+      }
+      if (shape === 'octagon'){
+        const o = Math.min(rect.w, rect.h) * 0.2;
+        targetCtx.beginPath();
+        polygonPath(targetCtx, [
+          {x:rect.x + o, y:rect.y},
+          {x:rect.x + rect.w - o, y:rect.y},
+          {x:rect.x + rect.w, y:rect.y + o},
+          {x:rect.x + rect.w, y:rect.y + rect.h - o},
+          {x:rect.x + rect.w - o, y:rect.y + rect.h},
+          {x:rect.x + o, y:rect.y + rect.h},
+          {x:rect.x, y:rect.y + rect.h - o},
+          {x:rect.x, y:rect.y + o}
+        ], rad);
+        targetCtx.closePath();
+        return;
+      }
+      targetCtx.beginPath();
+      polygonPath(targetCtx, [
+        {x:rect.x, y:rect.y},
+        {x:rect.x + rect.w, y:rect.y},
+        {x:rect.x + rect.w, y:rect.y + rect.h},
+        {x:rect.x, y:rect.y + rect.h}
+      ], rad);
+      targetCtx.closePath();
+    }
     function roundedRectPath(c, x, y, w, h, radius){
       const r = Math.max(0, Math.min(radius || 0, Math.min(w, h)/2));
       c.beginPath();
@@ -516,7 +565,7 @@
     /* ===== DIECUT — helpery ===== */
 
     // 360° dylatacja z marginesem, by ring nie był ucinany na krawędziach
-    function buildRingFromMask(mask, ringPx, color, radiusSoft){
+    function buildRingFromMask(mask, ringPx, color){
       const w = mask.width, h = mask.height;
       const spread = Math.max(1, Math.ceil(Math.max(0, ringPx || 0)));
 
@@ -547,18 +596,6 @@
       octx.globalCompositeOperation = 'destination-out';
       octx.drawImage(mask, spread, spread);
       octx.globalCompositeOperation = 'source-over';
-
-      const soft = Math.max(0, parseFloat(radiusSoft||0));
-      if (soft > 0){
-        const tmp = document.createElement('canvas');
-        tmp.width = out.width; tmp.height = out.height;
-        const tctx = tmp.getContext('2d');
-        tctx.imageSmoothingEnabled = false;
-        tctx.filter = `blur(${Math.min(20, soft)}px)`;
-        tctx.drawImage(out, 0, 0);
-        octx.clearRect(0, 0, out.width, out.height);
-        octx.drawImage(tmp, 0, 0);
-      }
 
       return out;
     }
@@ -711,8 +748,7 @@
 
           if (maskReady){
             const ringColor = outColorEl?.value || '#ff0000'; // sterujesz pickerem obrysu
-            const smooth = Math.max(0.8, outlinePx * 0.6);
-            ringCanvas = buildRingFromMask(mask, outlinePx, ringColor, smooth);
+            ringCanvas = buildRingFromMask(mask, outlinePx, ringColor);
             pad = Math.max(1, Math.ceil(outlinePx));
             if (needsEdgeHighlight(ringColor, bg)){
               ringHighlight = document.createElement('canvas');
@@ -1611,8 +1647,24 @@
 
     function renderExportBase(ctx2, W, H, bgCol){
       ctx2.clearRect(0,0,W,H);
-      ctx2.fillStyle = bgCol||'#ffffff';
-      ctx2.fillRect(0,0,W,H);
+      const fill = bgCol || '#ffffff';
+      if (shape === 'diecut'){
+        ctx2.fillStyle = fill;
+        ctx2.fillRect(0,0,W,H);
+        return;
+      }
+      ctx2.save();
+      exportShapePath(ctx2, { x:0, y:0, w:W, h:H });
+      ctx2.fillStyle = fill;
+      ctx2.fill();
+      ctx2.restore();
+    }
+    function exportShapeClip(ctx2, W, H, drawFn){
+      ctx2.save();
+      exportShapePath(ctx2, { x:0, y:0, w:W, h:H });
+      ctx2.clip();
+      try{ drawFn(); }
+      finally{ ctx2.restore(); }
     }
 
     async function exportPDF300(){
@@ -1650,120 +1702,122 @@
         // grafika
         if (uploaded.img){
           if (shape==='diecut'){
-            const outlineEnabled = !!outOnEl?.checked;
-            const outlineMM = Math.max(0, parseFloat(outMMEl?.value||'3'));
-            const ringPxPrev = outlineEnabled ? (pxPerCm(rPrev) * (outlineMM/10)) : 0;
-            const ringPxOut  = ringPxPrev > 0 ? Math.max(1, Math.round(ringPxPrev * ((kx+ky)/2))) : 0;
+            exportShapeClip(octx, pxW, pxH, ()=>{
+              const outlineEnabled = !!outOnEl?.checked;
+              const outlineMM = Math.max(0, parseFloat(outMMEl?.value||'3'));
+              const ringPxPrev = outlineEnabled ? (pxPerCm(rPrev) * (outlineMM/10)) : 0;
+              const ringPxOut  = ringPxPrev > 0 ? Math.max(1, Math.round(ringPxPrev * ((kx+ky)/2))) : 0;
 
-            const iw = uploaded.img.width, ih = uploaded.img.height;
-            const basePrev = Math.max(rPrev.w/iw, rPrev.h/ih);
+              const iw = uploaded.img.width, ih = uploaded.img.height;
+              const basePrev = Math.max(rPrev.w/iw, rPrev.h/ih);
 
-            const fit = diecutSafePlacement(rPrev, uploaded.img, (transform.scale||1), (transform.rotDeg||0), ringPxPrev, 2);
-            const effScale = fit.scale;
+              const fit = diecutSafePlacement(rPrev, uploaded.img, (transform.scale||1), (transform.rotDeg||0), ringPxPrev, 2);
+              const effScale = fit.scale;
 
-            const dwPrev = Math.max(1, Math.round(iw * basePrev * effScale));
-            const dhPrev = Math.max(1, Math.round(ih * basePrev * effScale));
+              const dwPrev = Math.max(1, Math.round(iw * basePrev * effScale));
+              const dhPrev = Math.max(1, Math.round(ih * basePrev * effScale));
 
-            const dwExport = Math.max(1, Math.round(dwPrev * ((kx+ky)/2)));
-            const dhExport = Math.max(1, Math.round(dhPrev * ((kx+ky)/2)));
+              const dwExport = Math.max(1, Math.round(dwPrev * ((kx+ky)/2)));
+              const dhExport = Math.max(1, Math.round(dhPrev * ((kx+ky)/2)));
 
-            let ringCanvas = null;
-            let ringHighlight = null;
-            let pad = 0;
-            if (ringPxOut > 0){
-              const mask = document.createElement('canvas');
-              mask.width = dwExport; mask.height = dhExport;
-              const mctx = mask.getContext('2d');
-              mctx.imageSmoothingEnabled = false;
-              mctx.drawImage(uploaded.img, 0, 0, dwExport, dhExport);
+              let ringCanvas = null;
+              let ringHighlight = null;
+              let pad = 0;
+              if (ringPxOut > 0){
+                const mask = document.createElement('canvas');
+                mask.width = dwExport; mask.height = dhExport;
+                const mctx = mask.getContext('2d');
+                mctx.imageSmoothingEnabled = false;
+                mctx.drawImage(uploaded.img, 0, 0, dwExport, dhExport);
 
-              let maskReady = true;
-              try {
-                const imgData = mctx.getImageData(0, 0, dwExport, dhExport);
-                const buf = imgData.data;
-                let hasOpaque = false;
-                for (let i = 0; i < buf.length; i += 4){
-                  const alpha = buf[i + 3];
-                  if (alpha > 0){
-                    buf[i] = 255; buf[i + 1] = 255; buf[i + 2] = 255; buf[i + 3] = 255;
-                    hasOpaque = true;
-                  } else {
-                    buf[i] = 0; buf[i + 1] = 0; buf[i + 2] = 0; buf[i + 3] = 0;
+                let maskReady = true;
+                try {
+                  const imgData = mctx.getImageData(0, 0, dwExport, dhExport);
+                  const buf = imgData.data;
+                  let hasOpaque = false;
+                  for (let i = 0; i < buf.length; i += 4){
+                    const alpha = buf[i + 3];
+                    if (alpha > 0){
+                      buf[i] = 255; buf[i + 1] = 255; buf[i + 2] = 255; buf[i + 3] = 255;
+                      hasOpaque = true;
+                    } else {
+                      buf[i] = 0; buf[i + 1] = 0; buf[i + 2] = 0; buf[i + 3] = 0;
+                    }
                   }
-                }
-                if (hasOpaque){
-                  mctx.putImageData(imgData, 0, 0);
-                } else {
+                  if (hasOpaque){
+                    mctx.putImageData(imgData, 0, 0);
+                  } else {
+                    maskReady = false;
+                  }
+                } catch(err){
+                  console.warn('diecut export mask read failed', err);
                   maskReady = false;
                 }
-              } catch(err){
-                console.warn('diecut export mask read failed', err);
-                maskReady = false;
-              }
 
-              if (maskReady){
-                const ringColor = outColorEl?.value || '#ff0000';
-                const smooth = Math.max(0.8, ringPxOut * 0.6);
-                ringCanvas = buildRingFromMask(mask, ringPxOut, ringColor, smooth);
-                pad = Math.max(1, Math.ceil(ringPxOut));
-                if (needsEdgeHighlight(ringColor, colorEl?.value || '#ffffff')){
-                  ringHighlight = document.createElement('canvas');
-                  ringHighlight.width = ringCanvas.width;
-                  ringHighlight.height = ringCanvas.height;
-                  const hctx = ringHighlight.getContext('2d');
-                  hctx.imageSmoothingEnabled = true;
-                  hctx.filter = 'blur(1.2px)';
-                  hctx.drawImage(ringCanvas, 0, 0);
-                  hctx.globalCompositeOperation = 'source-in';
-                  hctx.fillStyle = 'rgba(0,0,0,0.35)';
-                  hctx.fillRect(0, 0, ringHighlight.width, ringHighlight.height);
-                  hctx.globalCompositeOperation = 'source-over';
+                if (maskReady){
+                  const ringColor = outColorEl?.value || '#ff0000';
+                  ringCanvas = buildRingFromMask(mask, ringPxOut, ringColor);
+                  pad = Math.max(1, Math.ceil(ringPxOut));
+                  if (needsEdgeHighlight(ringColor, colorEl?.value || '#ffffff')){
+                    ringHighlight = document.createElement('canvas');
+                    ringHighlight.width = ringCanvas.width;
+                    ringHighlight.height = ringCanvas.height;
+                    const hctx = ringHighlight.getContext('2d');
+                    hctx.imageSmoothingEnabled = true;
+                    hctx.filter = 'blur(1.2px)';
+                    hctx.drawImage(ringCanvas, 0, 0);
+                    hctx.globalCompositeOperation = 'source-in';
+                    hctx.fillStyle = 'rgba(0,0,0,0.35)';
+                    hctx.fillRect(0, 0, ringHighlight.width, ringHighlight.height);
+                    hctx.globalCompositeOperation = 'source-over';
+                  }
                 }
               }
-            }
 
-            const cxPrev = rPrev.x + rPrev.w/2 + fit.clampOffsetX(transform.offsetX||0);
-            const cyPrev = rPrev.y + rPrev.h/2 + fit.clampOffsetY(transform.offsetY||0);
+              const cxPrev = rPrev.x + rPrev.w/2 + fit.clampOffsetX(transform.offsetX||0);
+              const cyPrev = rPrev.y + rPrev.h/2 + fit.clampOffsetY(transform.offsetY||0);
 
-            const cx = cxPrev * kx;
-            const cy = cyPrev * ky;
+              const cx = cxPrev * kx;
+              const cy = cyPrev * ky;
 
-            const rot = (transform.rotDeg||0) * Math.PI/180;
+              const rot = (transform.rotDeg||0) * Math.PI/180;
 
-            // obraz
-            octx.save();
-            octx.translate(cx, cy);
-            octx.rotate(rot);
-            octx.drawImage(uploaded.img, -dwExport/2, -dhExport/2, dwExport, dhExport);
-            octx.restore();
-
-            if (ringHighlight){
               octx.save();
               octx.translate(cx, cy);
               octx.rotate(rot);
-              octx.globalAlpha = 0.55;
-              octx.drawImage(ringHighlight, -(dwExport/2 + pad), -(dhExport/2 + pad), dwExport + 2*pad, dhExport + 2*pad);
+              octx.drawImage(uploaded.img, -dwExport/2, -dhExport/2, dwExport, dhExport);
               octx.restore();
-            }
 
-            if (ringCanvas){
-              octx.save();
-              octx.translate(cx, cy);
-              octx.rotate(rot);
-              octx.drawImage(ringCanvas, -(dwExport/2 + pad), -(dhExport/2 + pad), dwExport + 2*pad, dhExport + 2*pad);
-              octx.restore();
-            }
+              if (ringHighlight){
+                octx.save();
+                octx.translate(cx, cy);
+                octx.rotate(rot);
+                octx.globalAlpha = 0.55;
+                octx.drawImage(ringHighlight, -(dwExport/2 + pad), -(dhExport/2 + pad), dwExport + 2*pad, dhExport + 2*pad);
+                octx.restore();
+              }
 
+              if (ringCanvas){
+                octx.save();
+                octx.translate(cx, cy);
+                octx.rotate(rot);
+                octx.drawImage(ringCanvas, -(dwExport/2 + pad), -(dhExport/2 + pad), dwExport + 2*pad, dhExport + 2*pad);
+                octx.restore();
+              }
+            });
           } else {
-            // inne kształty — jak w podglądzie
-            const iw=uploaded.img.width, ih=uploaded.img.height;
-            const base=Math.max(pxW/iw, pxH/ih)*(transform.scale||1);
-            const dw=iw*base, dh=ih*base, cx=pxW/2 + (transform.offsetX||0)*kx, cy=pxH/2 + (transform.offsetY||0)*ky;
-            octx.save();
-            octx.translate(cx, cy);
-            octx.rotate(((transform.rotDeg||0)*Math.PI)/180);
-            octx.drawImage(uploaded.img, -dw/2, -dh/2, dw, dh);
-            octx.restore();
+            exportShapeClip(octx, pxW, pxH, ()=>{
+              const iw=uploaded.img.width, ih=uploaded.img.height;
+              const base=Math.max(pxW/iw, pxH/ih)*(transform.scale||1);
+              const dw=iw*base, dh=ih*base;
+              const cx=pxW/2 + (transform.offsetX||0)*kx;
+              const cy=pxH/2 + (transform.offsetY||0)*ky;
+              octx.save();
+              octx.translate(cx, cy);
+              octx.rotate(((transform.rotDeg||0)*Math.PI)/180);
+              octx.drawImage(uploaded.img, -dw/2, -dh/2, dw, dh);
+              octx.restore();
+            });
           }
         }
 
@@ -1773,14 +1827,16 @@
           const fontPx  = basePx * (textObj.scale || 1);
           const cx = pxW/2 + (textObj.offsetX || 0)*kx;
           const cy = pxH/2 + (textObj.offsetY || 0)*ky;
-          octx.save();
-          octx.translate(cx, cy);
-          octx.rotate(((textObj.rotDeg || 0) * Math.PI)/180);
-          octx.textAlign = 'center'; octx.textBaseline = 'middle';
-          octx.fillStyle = textObj.color || '#111111';
-          octx.font = `${Math.max(6, fontPx).toFixed(0)}px ${quoteFont(textObj.font || 'Inter')}, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
-          octx.fillText(textObj.text, 0, 0);
-          octx.restore();
+          exportShapeClip(octx, pxW, pxH, ()=>{
+            octx.save();
+            octx.translate(cx, cy);
+            octx.rotate(((textObj.rotDeg || 0) * Math.PI)/180);
+            octx.textAlign = 'center'; octx.textBaseline = 'middle';
+            octx.fillStyle = textObj.color || '#111111';
+            octx.font = `${Math.max(6, fontPx).toFixed(0)}px ${quoteFont(textObj.font || 'Inter')}, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+            octx.fillText(textObj.text, 0, 0);
+            octx.restore();
+          });
         }
 
         // QR — render w skali eksportu
@@ -1803,23 +1859,25 @@
             const frameRadius = Math.max(0, (qrObj.frameRadiusPct || 0) / 100) * (totalSide/2);
             const frameColor = qrLight?.value || qrObj.light || '#ffffff';
 
-            octx.save();
-            octx.translate(cx, cy);
-            octx.rotate((qrObj.rotDeg||0) * Math.PI/180);
+            exportShapeClip(octx, pxW, pxH, ()=>{
+              octx.save();
+              octx.translate(cx, cy);
+              octx.rotate((qrObj.rotDeg||0) * Math.PI/180);
 
-            if (pad > 0.1){
-              roundedRectPath(octx, -totalSide/2, -totalSide/2, totalSide, totalSide, frameRadius);
-              octx.fillStyle = frameColor;
-              octx.fill();
-              octx.lineWidth = Math.max(1, totalSide * 0.012);
-              octx.strokeStyle = 'rgba(0,0,0,0.14)';
-              roundedRectPath(octx, -totalSide/2, -totalSide/2, totalSide, totalSide, frameRadius);
-              octx.stroke();
-            }
+              if (pad > 0.1){
+                roundedRectPath(octx, -totalSide/2, -totalSide/2, totalSide, totalSide, frameRadius);
+                octx.fillStyle = frameColor;
+                octx.fill();
+                octx.lineWidth = Math.max(1, totalSide * 0.012);
+                octx.strokeStyle = 'rgba(0,0,0,0.14)';
+                roundedRectPath(octx, -totalSide/2, -totalSide/2, totalSide, totalSide, frameRadius);
+                octx.stroke();
+              }
 
-            octx.drawImage(offCanvas || qrObj.canvas, -side/2, -side/2, side, side);
+              octx.drawImage(offCanvas || qrObj.canvas, -side/2, -side/2, side, side);
 
-            octx.restore();
+              octx.restore();
+            });
           }
         }
 

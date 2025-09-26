@@ -7,10 +7,6 @@ if ( ! defined( 'ABSPATH' ) ) {
     <div class="stb-wrap">
         <div class="stb-card stb-grid-page">
             <div class="order-col">
-                <header>
-                    <h2>Konfigurator naklejek</h2>
-                    <p>Wybierz parametry naklejki, a następnie otwórz kreator, aby dopracować grafikę.</p>
-                </header>
 
                 <section class="list-section">
                     <span class="label">Rozmiar naklejki</span>
@@ -82,6 +78,33 @@ if ( ! defined( 'ABSPATH' ) ) {
                         <button type="button" class="opt-item" data-qty="100" aria-pressed="true">
                             <div class="opt-line">
                                 <span class="opt-main">100 sztuk</span>
+                                <span class="opt-right">
+                                    <span class="opt-price"></span>
+                                    <span class="opt-save"></span>
+                                </span>
+                            </div>
+                        </button>
+                        <button type="button" class="opt-item" data-qty="200" aria-pressed="false">
+                            <div class="opt-line">
+                                <span class="opt-main">200 sztuk</span>
+                                <span class="opt-right">
+                                    <span class="opt-price"></span>
+                                    <span class="opt-save"></span>
+                                </span>
+                            </div>
+                        </button>
+                        <button type="button" class="opt-item" data-qty="1000" aria-pressed="false">
+                            <div class="opt-line">
+                                <span class="opt-main">1000 sztuk</span>
+                                <span class="opt-right">
+                                    <span class="opt-price"></span>
+                                    <span class="opt-save"></span>
+                                </span>
+                            </div>
+                        </button>
+                        <button type="button" class="opt-item" data-qty="3000" aria-pressed="false">
+                            <div class="opt-line">
+                                <span class="opt-main">3000 sztuk</span>
                                 <span class="opt-right">
                                     <span class="opt-price"></span>
                                     <span class="opt-save"></span>
@@ -249,6 +272,13 @@ if ( ! defined( 'ABSPATH' ) ) {
                                         <option value="Dancing Script" style="font-family: 'Dancing Script', cursive;">Dancing Script</option>
                                         <option value="Amatic SC" style="font-family: 'Amatic SC', cursive;">Amatic SC</option>
                                         <option value="Gloria Hallelujah" style="font-family: 'Gloria Hallelujah', cursive;">Gloria Hallelujah</option>
+                                        <option value="Great Vibes" style="font-family: 'Great Vibes', cursive;">Great Vibes</option>
+                                        <option value="Permanent Marker" style="font-family: 'Permanent Marker', cursive;">Permanent Marker</option>
+                                        <option value="Kalam" style="font-family: 'Kalam', cursive;">Kalam</option>
+                                        <option value="Satisfy" style="font-family: 'Satisfy', cursive;">Satisfy</option>
+                                        <option value="Lobster" style="font-family: 'Lobster', cursive;">Lobster</option>
+                                        <option value="Indie Flower" style="font-family: 'Indie Flower', cursive;">Indie Flower</option>
+                                        <option value="Handlee" style="font-family: 'Handlee', cursive;">Handlee</option>
                                     </select>
                                 </label>
                                 <label class="stb-field stb-color-field">
