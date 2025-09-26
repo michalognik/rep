@@ -81,7 +81,7 @@
 @media (max-width:820px){ #stb-root .price-in-order{ grid-column:1 } }
 
 /* DESIGNER na stronie chowamy — tylko modal */
-#stb-root .stb-grid-page > .designer{ display:none !important }
+#stb-root .stb-wrap > .designer{ display:none !important }
 
 /* ========================= MODAL ========================= */
 .stb-modal{
