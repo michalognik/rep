@@ -185,6 +185,10 @@
     const qrLight   = byId('stb-qr-light');
     const qrECC     = byId('stb-qr-ecc');
     const qrQuiet   = byId('stb-qr-quiet');
+    const qrFramePad    = byId('stb-qr-frame-pad');
+    const qrFramePadVal = byId('stb-qr-frame-pad-val');
+    const qrFrameRadius    = byId('stb-qr-frame-radius');
+    const qrFrameRadiusVal = byId('stb-qr-frame-radius-val');
 
     // Dane QR
     const qrURL       = byId('stb-qr-url');
@@ -192,12 +196,6 @@
     const qrWifiPass  = byId('stb-qr-wifi-pass');
     const qrWifiAuth  = byId('stb-qr-wifi-auth');
     const qrWifiHidden= byId('stb-qr-wifi-hidden');
-
-    // Obrys QR
-    const qrOutlineOn    = byId('stb-qr-outline-on');
-    const qrOutlineColor = byId('stb-qr-outline-color');
-    const qrOutlineWidth = byId('stb-qr-outline-width');
-    const qrOutlineRadius= byId('stb-qr-outline-radius');
 
     /* ===== Stan ===== */
     const parseNum = (elOrVal, def) => { const v=(typeof elOrVal==='number')?elOrVal:parseFloat(elOrVal?.value); return (isFinite(v)&&v>0)?v:def; };
@@ -209,13 +207,13 @@
     // shapes: rect|circle|ellipse|triangle|octagon|diecut
     let shape='rect', ellipseRatio=1.0;
 
-    let textObj = { text:'', font:'Inter', color:'#111111', scale:1, rotDeg:0, offsetX:0, offsetY:0 };
+    let textObj = { text:'', font:(textFontSel?.value||'Inter'), color:'#111111', scale:1, rotDeg:0, offsetX:0, offsetY:0 };
 
     // QR (davidshimjs) – generujemy offscreen canvas
     let qrObj = {
       enabled:false, dark:'#111111', light:'#ffffff', ecc:'M',
       quiet:4, scale:1, rotDeg:0, offsetX:0, offsetY:0,
-      outline:{ enabled:false, color:'#111111', widthPct:2, radiusPct:0 },
+      framePadPct:12, frameRadiusPct:8,
       canvas:null
     };
 
@@ -283,6 +281,35 @@
       return (Math.round(b*10)/10)+' '+u[i];
     };
     const quoteFont = (f)=> (/\s/.test(f||'') ? ('"'+f+'"') : (f||''));
+    const parseHexColor = (hex)=>{
+      if (typeof hex !== 'string') return null;
+      const m = hex.trim().match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+      if (!m) return null;
+      let v = m[1];
+      if (v.length === 3){ v = v.split('').map(ch=>ch+ch).join(''); }
+      const num = parseInt(v, 16);
+      return { r:(num>>16)&255, g:(num>>8)&255, b:num&255 };
+    };
+    const relativeLuma = (rgb)=>{
+      if (!rgb) return null;
+      const toLin = (c)=>{ const n=c/255; return (n<=0.03928)?(n/12.92):Math.pow((n+0.055)/1.055, 2.4); };
+      const r=toLin(rgb.r), g=toLin(rgb.g), b=toLin(rgb.b);
+      return 0.2126*r + 0.7152*g + 0.0722*b;
+    };
+    const colorDistance = (a,b)=>{
+      if (!a || !b) return Infinity;
+      const dr=a.r-b.r, dg=a.g-b.g, db=a.b-b.b;
+      return Math.sqrt(dr*dr + dg*dg + db*db);
+    };
+    const needsEdgeHighlight = (outlineColor, backgroundColor)=>{
+      const o=parseHexColor(outlineColor); const bg=parseHexColor(backgroundColor);
+      if (!o || !bg) return false;
+      const lO=relativeLuma(o), lB=relativeLuma(bg);
+      if (lO==null || lB==null) return false;
+      const contrast = (Math.max(lO,lB)+0.05)/(Math.min(lO,lB)+0.05);
+      if (contrast > 1.6) return false;
+      return colorDistance(o,bg) < 80;
+    };
     const shapeLabel = (s)=>({ rect:'Prostokąt', circle:'Koło', ellipse:'Elipsa', triangle:'Trójkąt', octagon:'Ośmiokąt', diecut:'DIECUT' }[s] || '—');
 
     /* ===== Geometria ===== */
@@ -325,6 +352,20 @@
       }
       // DIECUT używa prostokątnego obszaru podglądu (rysujemy specjalnie w draw)
       return ()=> polygonPath(ctx, [ {x:r.x,y:r.y}, {x:r.x+r.w,y:r.y}, {x:r.x+r.w,y:r.y+r.h}, {x:r.x,y:r.y+r.h} ], rad);
+    }
+    function roundedRectPath(c, x, y, w, h, radius){
+      const r = Math.max(0, Math.min(radius || 0, Math.min(w, h)/2));
+      c.beginPath();
+      c.moveTo(x + r, y);
+      c.lineTo(x + w - r, y);
+      c.arcTo(x + w, y, x + w, y + r, r);
+      c.lineTo(x + w, y + h - r);
+      c.arcTo(x + w, y + h, x + w - r, y + h, r);
+      c.lineTo(x + r, y + h);
+      c.arcTo(x, y + h, x, y + h - r, r);
+      c.lineTo(x, y + r);
+      c.arcTo(x, y, x + r, y, r);
+      c.closePath();
     }
     function pxPerCm(rect){
       const w_cm=parseNum(wEl,10), h_cm=parseNum(hEl,10);
@@ -483,12 +524,12 @@
       out.width = w + 2*spread;
       out.height = h + 2*spread;
       const octx = out.getContext('2d');
-      octx.imageSmoothingEnabled = false;
+      octx.imageSmoothingEnabled = true;
 
       const colored = document.createElement('canvas');
       colored.width = w; colored.height = h;
       const cctx = colored.getContext('2d');
-      cctx.imageSmoothingEnabled = false;
+      cctx.imageSmoothingEnabled = true;
       cctx.drawImage(mask, 0, 0);
       cctx.globalCompositeOperation = 'source-in';
       cctx.fillStyle = color || '#111111';
@@ -562,38 +603,36 @@
     function drawQR(){
       if (!qrObj.enabled || !qrObj.canvas) return;
       const r=getDrawRect();
-      const side = Math.min(r.w, r.h) * 0.38 * (qrObj.scale || 1);
+      const baseSide = Math.min(r.w, r.h) * 0.38 * (qrObj.scale || 1);
+      if (!(baseSide > 0)) return;
+      const padPct = Math.max(0, qrObj.framePadPct || 0);
+      const pad = baseSide * (padPct/100);
+      const totalSide = baseSide + pad*2;
+      const radiusPct = Math.max(0, qrObj.frameRadiusPct || 0);
+      const frameRadius = (radiusPct/100) * (totalSide/2);
       const cx = r.x + r.w/2 + (qrObj.offsetX||0);
       const cy = r.y + r.h/2 + (qrObj.offsetY||0);
+      const frameColor = qrLight?.value || qrObj.light || '#ffffff';
 
       ctx.save();
       ctx.beginPath(); const path=shapePath(); path(); ctx.closePath(); ctx.clip();
 
       ctx.translate(cx, cy);
       ctx.rotate((qrObj.rotDeg||0) * Math.PI/180);
-      ctx.drawImage(qrObj.canvas, -side/2, -side/2, side, side);
 
-      if (qrObj.outline?.enabled){
-        const lw = Math.max(1, side * (Math.max(0, qrObj.outline.widthPct||0)/100));
-        ctx.lineWidth = lw;
-        ctx.strokeStyle = qrObj.outline.color || '#111111';
-        const rad = Math.max(0, (qrObj.outline.radiusPct||0)/100) * (side/2);
-        if (rad>0){
-          const r2 = side/2;
-          const x = -r2, y = -r2, w = side, h = side;
-          const rr = Math.min(rad, r2);
-          ctx.beginPath();
-          ctx.moveTo(x+rr,y);
-          ctx.arcTo(x+w,y,x+w,y+h,rr);
-          ctx.arcTo(x+w,y+h,x,y+h,rr);
-          ctx.arcTo(x,y+h,x,y,rr);
-          ctx.arcTo(x,y,x+w,y,rr);
-          ctx.closePath();
-          ctx.stroke();
-        } else {
-          ctx.strokeRect(-side/2, -side/2, side, side);
-        }
+      if (pad > 0.1){
+        ctx.save();
+        roundedRectPath(ctx, -totalSide/2, -totalSide/2, totalSide, totalSide, frameRadius);
+        ctx.fillStyle = frameColor;
+        ctx.fill();
+        ctx.lineWidth = Math.max(1, totalSide * 0.012);
+        ctx.strokeStyle = 'rgba(0,0,0,0.14)';
+        roundedRectPath(ctx, -totalSide/2, -totalSide/2, totalSide, totalSide, frameRadius);
+        ctx.stroke();
+        ctx.restore();
       }
+
+      ctx.drawImage(qrObj.canvas, -baseSide/2, -baseSide/2, baseSide, baseSide);
 
       ctx.restore();
     }
@@ -636,6 +675,7 @@
         const dh = Math.max(1, Math.round(ih * base * effScale));
 
         let ringCanvas = null;
+        let ringHighlight = null;
         let pad = 0;
         if (outlinePx > 0){
           const mask = document.createElement('canvas');
@@ -671,8 +711,22 @@
 
           if (maskReady){
             const ringColor = outColorEl?.value || '#ff0000'; // sterujesz pickerem obrysu
-            ringCanvas = buildRingFromMask(mask, outlinePx, ringColor, 0);
+            const smooth = Math.max(0.8, outlinePx * 0.6);
+            ringCanvas = buildRingFromMask(mask, outlinePx, ringColor, smooth);
             pad = Math.max(1, Math.ceil(outlinePx));
+            if (needsEdgeHighlight(ringColor, bg)){
+              ringHighlight = document.createElement('canvas');
+              ringHighlight.width = ringCanvas.width;
+              ringHighlight.height = ringCanvas.height;
+              const hctx = ringHighlight.getContext('2d');
+              hctx.imageSmoothingEnabled = true;
+              hctx.filter = 'blur(1.2px)';
+              hctx.drawImage(ringCanvas, 0, 0);
+              hctx.globalCompositeOperation = 'source-in';
+              hctx.fillStyle = 'rgba(0,0,0,0.35)';
+              hctx.fillRect(0, 0, ringHighlight.width, ringHighlight.height);
+              hctx.globalCompositeOperation = 'source-over';
+            }
           }
         }
 
@@ -689,6 +743,15 @@
         ctx.rotate(rot);
         ctx.drawImage(uploaded.img, -dw/2, -dh/2, dw, dh);
         ctx.restore();
+
+        if (ringHighlight){
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(rot);
+          ctx.globalAlpha = 0.55;
+          ctx.drawImage(ringHighlight, -(dw/2 + pad), -(dh/2 + pad), dw + 2*pad, dh + 2*pad);
+          ctx.restore();
+        }
 
         if (ringCanvas){
           ctx.save();
@@ -806,11 +869,13 @@
     function qrBoundingBox(){
       if (!qrObj.enabled || !qrObj.canvas) return null;
       const r = getDrawRect();
-      const side = Math.min(r.w, r.h) * 0.38 * (qrObj.scale || 1);
+      const base = Math.min(r.w, r.h) * 0.38 * (qrObj.scale || 1);
+      const pad = base * (Math.max(0, qrObj.framePadPct || 0) / 100);
+      const total = base + pad * 2;
       const cx = r.x + r.w/2 + (qrObj.offsetX||0);
       const cy = r.y + r.h/2 + (qrObj.offsetY||0);
       const rot = (qrObj.rotDeg||0) * Math.PI/180;
-      return { cx, cy, w: side, h: side, rot };
+      return { cx, cy, w: total, h: total, rot };
     }
     function pointInRotatedBox(px, py, box){
       const s = Math.sin(-box.rot), c = Math.cos(-box.rot);
@@ -1045,6 +1110,12 @@
     if (laminateEl) laminateEl.addEventListener('change', ()=>{ updatePriceAndJSON(); refreshQtyPrices(); updateSummaryMeta(); requestDraw(); });
 
     /* ===== Tekst ===== */
+    const refreshFontPreview = ()=>{
+      if (!textFontSel) return;
+      const font = textFontSel.value || 'Inter';
+      textFontSel.style.fontFamily = `${quoteFont(font)}, system-ui, -apple-system, 'Segoe UI', sans-serif`;
+    };
+
     if (textInput){
       textInput.addEventListener('focus', ()=> setToolTarget('text'));
       textInput.addEventListener('input', ()=>{
@@ -1057,9 +1128,11 @@
     if (textFontSel){
       textFontSel.addEventListener('change', ()=>{
         textObj.font = textFontSel.value || 'Inter';
+        refreshFontPreview();
         if (hasText()) setToolTarget('text');
         requestDraw();
       });
+      refreshFontPreview();
     }
     if (textColorEl){
       textColorEl.addEventListener('input', ()=>{
@@ -1085,6 +1158,23 @@
       });
     }
 
+    function initColorResets(){
+      $$('.color-reset[data-reset-color]').forEach(btn=>{
+        const targetId = btn.getAttribute('data-reset-color');
+        if (!targetId) return;
+        const target = byId(targetId);
+        if (!target) return;
+        const base = target.dataset?.default || target.getAttribute('value') || '#ffffff';
+        btn.addEventListener('click', ()=>{
+          const def = target.dataset?.default || base;
+          if (!def) return;
+          target.value = def;
+          target.dispatchEvent(new Event('input', { bubbles:true }));
+          target.dispatchEvent(new Event('change', { bubbles:true }));
+        });
+      });
+    }
+
     /* ===== QR UI ===== */
     function bindQR(){
       if (qrRemBtn){
@@ -1106,11 +1196,20 @@
         if (!el) return;
         const evt = (el.type==='range' || el.type==='color' || el.tagName==='SELECT') ? 'input' : 'change';
         el.addEventListener(evt, ()=>{
-          if (!qrObj.enabled) return;
-          setToolTarget('qr');
-          rebuildQR();
+          if (el === qrDark) qrObj.dark = qrDark.value || '#111111';
+          if (el === qrLight) qrObj.light = qrLight.value || '#ffffff';
+          if (el === qrECC) qrObj.ecc = qrECC.value || 'M';
+          if (el === qrQuiet) qrObj.quiet = Math.max(0, parseInt(qrQuiet.value||'0', 10));
+          if (qrObj.enabled){
+            setToolTarget('qr');
+            rebuildQR();
+          }
         });
       });
+      if (qrDark)  qrObj.dark  = qrDark.value || qrObj.dark;
+      if (qrLight) qrObj.light = qrLight.value || qrObj.light;
+      if (qrECC)   qrObj.ecc   = qrECC.value || qrObj.ecc;
+      if (qrQuiet) qrObj.quiet = Math.max(0, parseInt(qrQuiet.value||qrObj.quiet||'0', 10));
 
       // Dane
       [qrURL, qrWifiSSID, qrWifiPass, qrWifiAuth, qrWifiHidden].forEach(el=>{
@@ -1119,14 +1218,34 @@
         el.addEventListener(evt, syncQRStateFromInputs);
       });
 
-      // Obrys QR
-      if (qrOutlineOn) qrOutlineOn.addEventListener('change', ()=>{ qrObj.outline.enabled = !!qrOutlineOn.checked; if (qrObj.enabled) setToolTarget('qr'); requestDraw(); });
-      if (qrOutlineColor) qrOutlineColor.addEventListener('input', ()=>{ qrObj.outline.color = qrOutlineColor.value || '#111111'; if (qrObj.enabled) setToolTarget('qr'); requestDraw(); });
-      if (qrOutlineWidth) qrOutlineWidth.addEventListener('input', ()=>{ qrObj.outline.widthPct = Math.max(0, parseFloat(qrOutlineWidth.value||'0')); if (qrObj.enabled) setToolTarget('qr'); requestDraw(); });
-      if (qrOutlineRadius) qrOutlineRadius.addEventListener('input', ()=>{ qrObj.outline.radiusPct = Math.max(0, parseFloat(qrOutlineRadius.value||'0')); if (qrObj.enabled) setToolTarget('qr'); requestDraw(); });
+      const updateFramePad = ()=>{
+        if (!qrFramePad) return;
+        const val = Math.max(0, parseFloat(qrFramePad.value||'0'));
+        qrObj.framePadPct = val;
+        if (qrFramePadVal) qrFramePadVal.textContent = Math.round(val) + '%';
+        if (qrObj.enabled) setToolTarget('qr');
+        requestDraw();
+      };
+      const updateFrameRadius = ()=>{
+        if (!qrFrameRadius) return;
+        const val = Math.max(0, parseFloat(qrFrameRadius.value||'0'));
+        qrObj.frameRadiusPct = val;
+        if (qrFrameRadiusVal) qrFrameRadiusVal.textContent = Math.round(val) + '%';
+        if (qrObj.enabled) setToolTarget('qr');
+        requestDraw();
+      };
+      if (qrFramePad){
+        qrFramePad.addEventListener('input', updateFramePad);
+        updateFramePad();
+      }
+      if (qrFrameRadius){
+        qrFrameRadius.addEventListener('input', updateFrameRadius);
+        updateFrameRadius();
+      }
 
       updateQRTypeUI();
     }
+    initColorResets();
     bindQR();
 
     /* ===== Cennik + czas realizacji (dni robocze) ===== */
@@ -1299,7 +1418,8 @@
             rotDeg: +(qrObj.rotDeg||0),
             offsetX: +(qrObj.offsetX||0),
             offsetY: +(qrObj.offsetY||0),
-            outline: { enabled: !!(qrOutlineOn && qrOutlineOn.checked), color: (qrOutlineColor?.value || '#111111'), widthPct: +(qrObj.outline.widthPct||0), radiusPct: +(qrObj.outline.radiusPct||0) }
+            framePadPct: +(qrObj.framePadPct||0),
+            frameRadiusPct: +(qrObj.frameRadiusPct||0)
           },
           preview_png: safePreview()
         };
@@ -1548,6 +1668,7 @@
             const dhExport = Math.max(1, Math.round(dhPrev * ((kx+ky)/2)));
 
             let ringCanvas = null;
+            let ringHighlight = null;
             let pad = 0;
             if (ringPxOut > 0){
               const mask = document.createElement('canvas');
@@ -1581,9 +1702,24 @@
               }
 
               if (maskReady){
-                ringCanvas = buildRingFromMask(mask, ringPxOut, outColorEl?.value || '#ff0000', 0);
+                const ringColor = outColorEl?.value || '#ff0000';
+                const smooth = Math.max(0.8, ringPxOut * 0.6);
+                ringCanvas = buildRingFromMask(mask, ringPxOut, ringColor, smooth);
+                pad = Math.max(1, Math.ceil(ringPxOut));
+                if (needsEdgeHighlight(ringColor, colorEl?.value || '#ffffff')){
+                  ringHighlight = document.createElement('canvas');
+                  ringHighlight.width = ringCanvas.width;
+                  ringHighlight.height = ringCanvas.height;
+                  const hctx = ringHighlight.getContext('2d');
+                  hctx.imageSmoothingEnabled = true;
+                  hctx.filter = 'blur(1.2px)';
+                  hctx.drawImage(ringCanvas, 0, 0);
+                  hctx.globalCompositeOperation = 'source-in';
+                  hctx.fillStyle = 'rgba(0,0,0,0.35)';
+                  hctx.fillRect(0, 0, ringHighlight.width, ringHighlight.height);
+                  hctx.globalCompositeOperation = 'source-over';
+                }
               }
-              pad = Math.max(1, Math.ceil(ringPxOut));
             }
 
             const cxPrev = rPrev.x + rPrev.w/2 + fit.clampOffsetX(transform.offsetX||0);
@@ -1600,6 +1736,15 @@
             octx.rotate(rot);
             octx.drawImage(uploaded.img, -dwExport/2, -dhExport/2, dwExport, dhExport);
             octx.restore();
+
+            if (ringHighlight){
+              octx.save();
+              octx.translate(cx, cy);
+              octx.rotate(rot);
+              octx.globalAlpha = 0.55;
+              octx.drawImage(ringHighlight, -(dwExport/2 + pad), -(dhExport/2 + pad), dwExport + 2*pad, dhExport + 2*pad);
+              octx.restore();
+            }
 
             if (ringCanvas){
               octx.save();
@@ -1653,30 +1798,26 @@
 
             const cx = pxW/2 + (qrObj.offsetX||0)*kx;
             const cy = pxH/2 + (qrObj.offsetY||0)*ky;
+            const pad = side * (Math.max(0, qrObj.framePadPct || 0) / 100);
+            const totalSide = side + pad*2;
+            const frameRadius = Math.max(0, (qrObj.frameRadiusPct || 0) / 100) * (totalSide/2);
+            const frameColor = qrLight?.value || qrObj.light || '#ffffff';
 
             octx.save();
             octx.translate(cx, cy);
             octx.rotate((qrObj.rotDeg||0) * Math.PI/180);
-            octx.drawImage(offCanvas || qrObj.canvas, -side/2, -side/2, side, side);
 
-            if (qrObj.outline?.enabled){
-              octx.lineWidth = Math.max(1, side * (Math.max(0, qrObj.outline.widthPct||0)/100));
-              octx.strokeStyle = qrObj.outline.color || '#111111';
-              const rad = Math.max(0, (qrObj.outline.radiusPct||0)/100) * (side/2);
-              if (rad>0){
-                const r2 = side/2; const x=-r2,y=-r2,w=side,h=side, rr=Math.min(rad, r2);
-                octx.beginPath();
-                octx.moveTo(x+rr,y);
-                octx.arcTo(x+w,y,x+w,y+h,rr);
-                octx.arcTo(x+w,y+h,x,y+h,rr);
-                octx.arcTo(x,y+h,x,y,rr);
-                octx.arcTo(x,y,x+w,y,rr);
-                octx.closePath();
-                octx.stroke();
-              } else {
-                octx.strokeRect(-side/2, -side/2, side, side);
-              }
+            if (pad > 0.1){
+              roundedRectPath(octx, -totalSide/2, -totalSide/2, totalSide, totalSide, frameRadius);
+              octx.fillStyle = frameColor;
+              octx.fill();
+              octx.lineWidth = Math.max(1, totalSide * 0.012);
+              octx.strokeStyle = 'rgba(0,0,0,0.14)';
+              roundedRectPath(octx, -totalSide/2, -totalSide/2, totalSide, totalSide, frameRadius);
+              octx.stroke();
             }
+
+            octx.drawImage(offCanvas || qrObj.canvas, -side/2, -side/2, side, side);
 
             octx.restore();
           }

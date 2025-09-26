@@ -142,7 +142,7 @@ if ( ! defined( 'ABSPATH' ) ) {
                                         <svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="9 3 15 3 21 9 21 15 15 21 9 21 3 15 3 9"></polygon></svg>
                                     </button>
                                     <button type="button" class="shape-btn" data-shape="diecut" aria-pressed="false">
-                                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12l2 4v8l-2 4H6l-2-4V8z"></path></svg>
+                                        <span class="shape-label">DIECUT</span>
                                     </button>
                                 </div>
                             </div>
@@ -168,14 +168,20 @@ if ( ! defined( 'ABSPATH' ) ) {
                                         <span class="stb-lbl">Szerokość obrysu (mm)</span>
                                         <input type="number" id="stb-outline-mm" min="0" step="0.5" value="3">
                                     </label>
-                                    <label class="stb-field">
+                                    <label class="stb-field stb-color-field">
                                         <span class="stb-lbl">Kolor obrysu</span>
-                                        <input type="color" id="stb-outline-color" value="#ff0000">
+                                        <div class="stb-color-input">
+                                            <input type="color" id="stb-outline-color" value="#ff0000" data-default="#ff0000">
+                                            <button type="button" class="btn btn-icon color-reset" data-reset-color="stb-outline-color" aria-label="Resetuj kolor obrysu"><span aria-hidden="true">↺</span></button>
+                                        </div>
                                     </label>
                                 </div>
-                                <label class="stb-field" style="margin-top:6px;">
+                                <label class="stb-field stb-color-field" style="margin-top:6px;">
                                     <span class="stb-lbl">Kolor tła</span>
-                                    <input type="color" id="stb-color" value="#ffffff">
+                                    <div class="stb-color-input">
+                                        <input type="color" id="stb-color" value="#ffffff" data-default="#ffffff">
+                                        <button type="button" class="btn btn-icon color-reset" data-reset-color="stb-color" aria-label="Resetuj kolor tła"><span aria-hidden="true">↺</span></button>
+                                    </div>
                                 </label>
                             </div>
                         </div>
@@ -230,17 +236,27 @@ if ( ! defined( 'ABSPATH' ) ) {
                                 <label class="stb-field">
                                     <span class="stb-lbl">Czcionka</span>
                                     <select id="stb-text-font">
-                                        <option value="Inter">Inter</option>
-                                        <option value="Montserrat">Montserrat</option>
-                                        <option value="Roboto">Roboto</option>
-                                        <option value="Lato">Lato</option>
-                                        <option value="Poppins">Poppins</option>
-                                        <option value="Open Sans">Open Sans</option>
+                                        <option value="Inter" style="font-family: 'Inter', sans-serif;">Inter</option>
+                                        <option value="Montserrat" style="font-family: 'Montserrat', sans-serif;">Montserrat</option>
+                                        <option value="Roboto" style="font-family: 'Roboto', sans-serif;">Roboto</option>
+                                        <option value="Lato" style="font-family: 'Lato', sans-serif;">Lato</option>
+                                        <option value="Poppins" style="font-family: 'Poppins', sans-serif;">Poppins</option>
+                                        <option value="Open Sans" style="font-family: 'Open Sans', sans-serif;">Open Sans</option>
+                                        <option value="Pacifico" style="font-family: 'Pacifico', cursive;">Pacifico</option>
+                                        <option value="Caveat" style="font-family: 'Caveat', cursive;">Caveat</option>
+                                        <option value="Shadows Into Light" style="font-family: 'Shadows Into Light', cursive;">Shadows Into Light</option>
+                                        <option value="Patrick Hand" style="font-family: 'Patrick Hand', cursive;">Patrick Hand</option>
+                                        <option value="Dancing Script" style="font-family: 'Dancing Script', cursive;">Dancing Script</option>
+                                        <option value="Amatic SC" style="font-family: 'Amatic SC', cursive;">Amatic SC</option>
+                                        <option value="Gloria Hallelujah" style="font-family: 'Gloria Hallelujah', cursive;">Gloria Hallelujah</option>
                                     </select>
                                 </label>
-                                <label class="stb-field">
+                                <label class="stb-field stb-color-field">
                                     <span class="stb-lbl">Kolor tekstu</span>
-                                    <input type="color" id="stb-text-color" value="#111111">
+                                    <div class="stb-color-input">
+                                        <input type="color" id="stb-text-color" value="#111111" data-default="#111111">
+                                        <button type="button" class="btn btn-icon color-reset" data-reset-color="stb-text-color" aria-label="Resetuj kolor tekstu"><span aria-hidden="true">↺</span></button>
+                                    </div>
                                 </label>
                                 <div class="stb-inline">
                                     <button type="button" class="btn" id="stb-text-clear">Wyczyść</button>
@@ -268,11 +284,17 @@ if ( ! defined( 'ABSPATH' ) ) {
                                     </label>
                                     <label class="stb-field">
                                         <span class="stb-lbl">Kolor ciemny</span>
-                                        <input type="color" id="stb-qr-dark" value="#111111">
+                                        <div class="stb-color-input">
+                                            <input type="color" id="stb-qr-dark" value="#111111" data-default="#111111">
+                                            <button type="button" class="btn btn-icon color-reset" data-reset-color="stb-qr-dark" aria-label="Resetuj kolor ciemny QR"><span aria-hidden="true">↺</span></button>
+                                        </div>
                                     </label>
                                     <label class="stb-field">
                                         <span class="stb-lbl">Kolor tła</span>
-                                        <input type="color" id="stb-qr-light" value="#ffffff">
+                                        <div class="stb-color-input">
+                                            <input type="color" id="stb-qr-light" value="#ffffff" data-default="#ffffff">
+                                            <button type="button" class="btn btn-icon color-reset" data-reset-color="stb-qr-light" aria-label="Resetuj kolor tła QR"><span aria-hidden="true">↺</span></button>
+                                        </div>
                                     </label>
                                     <label class="stb-field">
                                         <span class="stb-lbl">Poziom korekcji błędów</span>
@@ -317,23 +339,14 @@ if ( ! defined( 'ABSPATH' ) ) {
                                     </label>
                                 </div>
                                 <div class="stb-row">
-                                    <span class="stb-lbl">Obrys kodu QR</span>
-                                    <div class="stb-inline">
-                                        <label class="stb-inline" style="gap:6px;">
-                                            <input type="checkbox" id="stb-qr-outline-on">
-                                            <span>Dodaj obrys</span>
+                                    <div class="stb-inline qr-frame-controls">
+                                        <label class="stb-field">
+                                            <span class="stb-lbl">Margines: <strong id="stb-qr-frame-pad-val">12%</strong></span>
+                                            <input type="range" id="stb-qr-frame-pad" min="0" max="40" step="1" value="12">
                                         </label>
                                         <label class="stb-field">
-                                            <span class="stb-lbl">Kolor</span>
-                                            <input type="color" id="stb-qr-outline-color" value="#111111">
-                                        </label>
-                                        <label class="stb-field">
-                                            <span class="stb-lbl">Szerokość (%)</span>
-                                            <input type="number" id="stb-qr-outline-width" min="0" max="50" step="1" value="2">
-                                        </label>
-                                        <label class="stb-field">
-                                            <span class="stb-lbl">Promień narożników (%)</span>
-                                            <input type="number" id="stb-qr-outline-radius" min="0" max="50" step="1" value="0">
+                                            <span class="stb-lbl">Zaokrąglenie: <strong id="stb-qr-frame-radius-val">8%</strong></span>
+                                            <input type="range" id="stb-qr-frame-radius" min="0" max="60" step="1" value="8">
                                         </label>
                                     </div>
                                 </div>
@@ -363,7 +376,7 @@ if ( ! defined( 'ABSPATH' ) ) {
                             <span aria-hidden="true">⧉</span>
                         </button>
                         <button type="button" class="btn btn-icon" id="tb-delete" title="Usuń element" aria-label="Usuń element">
-                            <span aria-hidden="true">🗑</span>
+                            <span aria-hidden="true">✕</span>
                         </button>
                         <button type="button" class="btn btn-icon" id="tb-pdf" title="Eksportuj do PDF" aria-label="Eksportuj do PDF">
                             <span aria-hidden="true">⤓</span>

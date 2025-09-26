@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Amatic+SC:wght@400;700&family=Caveat:wght@400;600;700&family=Dancing+Script:wght@400;600;700&family=Gloria+Hallelujah&family=Pacifico&family=Patrick+Hand&family=Shadows+Into+Light&display=swap');
+
 /* ===== Sticker Builder — base ===== */
 #stb-root{
   --accent:#2d7ff9; --ink:#111; --muted:#666; --line:#e7e7e7; --card:#fff; --radius:12px; --price-blue:#2d7ff9;
@@ -222,13 +224,43 @@ body.stb-lock{ overflow:hidden }
 
 /* Kształty — ikonki */
 .stb-modal .shape-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:8px }
+#stb-root .shape-btn,
 .stb-modal .shape-btn{
   display:grid; place-items:center; height:56px;
   border:1px solid var(--line) !important; background:#fff !important; border-radius:10px; cursor:pointer; transition:.15s;
+  font-weight:700; letter-spacing:.06em; font-size:.72rem; text-transform:uppercase;
 }
-.stb-modal .shape-btn[aria-pressed="true"]{ border-color:var(--accent) !important; box-shadow:inset 0 0 0 2px var(--accent) }
-.stb-modal .shape-btn svg{ width:28px; height:28px; display:block; color:#111 }
-.stb-modal .shape-btn svg *{ stroke:currentColor !important; fill:none !important; stroke-width:2 }
+.stb-modal .shape-btn[aria-pressed="true"],
+#stb-root .shape-btn[aria-pressed="true"]{ border-color:var(--accent) !important; box-shadow:inset 0 0 0 2px var(--accent) }
+.stb-modal .shape-btn svg,
+#stb-root .shape-btn svg{ width:28px; height:28px; display:block; color:#111 }
+.stb-modal .shape-btn svg *,
+#stb-root .shape-btn svg *{ stroke:currentColor !important; fill:none !important; stroke-width:2 }
+.stb-modal .shape-btn .shape-label,
+#stb-root .shape-btn .shape-label{ display:inline-block; padding:0 4px; }
+.stb-modal .shape-btn svg,
+#stb-root .shape-btn svg{ display:none }
+
+.stb-modal .shape-btn:not([data-shape="diecut"]) .shape-label,
+#stb-root .shape-btn:not([data-shape="diecut"]) .shape-label{ display:none }
+.stb-modal .shape-btn:not([data-shape="diecut"]) svg,
+#stb-root .shape-btn:not([data-shape="diecut"]) svg{ display:block }
+
+#stb-root .stb-color-field .stb-lbl{ display:flex; justify-content:space-between; align-items:center; gap:6px; }
+#stb-root .stb-color-field .stb-lbl strong{ font-size:.74rem; color:var(--muted); font-weight:600; }
+.stb-color-input{
+  display:flex; align-items:center; gap:6px;
+}
+.stb-color-input .color-reset{
+  width:32px; height:32px; min-width:32px;
+  border-radius:8px; font-size:.9rem;
+}
+.stb-color-input input[type="color"]{ flex:1 1 auto; min-width:0; }
+
+.qr-frame-controls{ align-items:flex-start; gap:16px; }
+.qr-frame-controls label{ flex:1 1 160px; }
+.qr-frame-controls input[type="range"]{ width:100%; }
+.qr-frame-controls .stb-lbl strong{ font-size:.78rem; color:var(--accent); }
 
 /* ===== Lista czcionek (zamiast kafelków) ===== */
 .stb-modal .font-list{ display:grid; gap:6px }
