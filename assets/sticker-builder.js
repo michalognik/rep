@@ -222,6 +222,70 @@
 
     const hasText = ()=> !!(textObj.text && textObj.text.trim().length);
 
+    /* ===== HUD dla uchwytów skali/rotacji ===== */
+    const canvasBox = canvas ? (canvas.closest('.canvas-box') || canvas.parentElement) : null;
+    const handleState = {
+      layer:null,
+      panel:null,
+      rotateBtn:null,
+      scaleRange:null,
+      scaleValue:null,
+      rotateDrag:null
+    };
+
+    function ensureHandleUI(){
+      if (!canvasBox || handleState.layer) return;
+      const layer = document.createElement('div');
+      layer.className = 'stb-handle-layer';
+      const panel = document.createElement('div');
+      panel.className = 'stb-handle-panel';
+      panel.style.display = 'none';
+
+      const rotateBtn = document.createElement('button');
+      rotateBtn.type = 'button';
+      rotateBtn.className = 'stb-handle-rotate';
+      rotateBtn.setAttribute('aria-label', 'Obróć element');
+      rotateBtn.innerHTML = '<span aria-hidden="true">⟳</span>';
+
+      const scaleRow = document.createElement('div');
+      scaleRow.className = 'stb-scale-row';
+
+      const scaleIcon = document.createElement('span');
+      scaleIcon.className = 'stb-scale-icon';
+      scaleIcon.setAttribute('aria-hidden', 'true');
+      scaleIcon.textContent = '⤢';
+
+      const scaleRange = document.createElement('input');
+      scaleRange.type = 'range';
+      scaleRange.className = 'stb-scale-range';
+      scaleRange.min = '0.1';
+      scaleRange.max = '6';
+      scaleRange.step = '0.01';
+      scaleRange.value = '1';
+      scaleRange.setAttribute('aria-label', 'Skala elementu');
+
+      const scaleValue = document.createElement('span');
+      scaleValue.className = 'stb-scale-value';
+      scaleValue.textContent = '100%';
+
+      scaleRow.appendChild(scaleIcon);
+      scaleRow.appendChild(scaleRange);
+      scaleRow.appendChild(scaleValue);
+
+      panel.appendChild(rotateBtn);
+      panel.appendChild(scaleRow);
+      layer.appendChild(panel);
+      canvasBox.appendChild(layer);
+
+      handleState.layer = layer;
+      handleState.panel = panel;
+      handleState.rotateBtn = rotateBtn;
+      handleState.scaleRange = scaleRange;
+      handleState.scaleValue = scaleValue;
+    }
+
+    ensureHandleUI();
+
     function defaultToolTarget(){
       if (uploaded.img) return 'image';
       if (hasText()) return 'text';
@@ -230,10 +294,11 @@
     }
 
     function setToolTarget(target){
-      if (target === 'image' && uploaded.img){ lastToolTarget = 'image'; return lastToolTarget; }
-      if (target === 'text' && hasText()){ lastToolTarget = 'text'; return lastToolTarget; }
-      if (target === 'qr' && qrObj.enabled){ lastToolTarget = 'qr'; return lastToolTarget; }
+      if (target === 'image' && uploaded.img){ lastToolTarget = 'image'; updateHandles(); return lastToolTarget; }
+      if (target === 'text' && hasText()){ lastToolTarget = 'text'; updateHandles(); return lastToolTarget; }
+      if (target === 'qr' && qrObj.enabled){ lastToolTarget = 'qr'; updateHandles(); return lastToolTarget; }
       lastToolTarget = defaultToolTarget();
+      updateHandles();
       return lastToolTarget;
     }
 
@@ -865,6 +930,7 @@
 
       refreshQtyPrices();
       updatePriceAndJSON();
+      updateHandles();
     }
 
     /* ===== rAF throttle ===== */
@@ -901,6 +967,34 @@
       const cy = r.y + r.h/2 + (textObj.offsetY||0);
       const rot = (textObj.rotDeg||0)*(Math.PI/180);
       return { cx, cy, w, h, rot };
+    }
+    function imageBoundingBox(){
+      if (!uploaded.img) return null;
+      const r = getDrawRect();
+      const outlineOn = !!outOnEl?.checked;
+      const outlineMM = Math.max(0, parseFloat(outMMEl?.value)||0);
+      const outlinePx = outlineOn ? (pxPerCm(r) * (outlineMM/10)) : 0;
+      const iw = uploaded.img.width;
+      const ih = uploaded.img.height;
+      if (!iw || !ih) return null;
+      let scale = 1;
+      let offX = transform.offsetX || 0;
+      let offY = transform.offsetY || 0;
+      const base = Math.max(r.w/iw, r.h/ih);
+      if (shape === 'diecut'){
+        const fit = diecutSafePlacement(r, uploaded.img, (transform.scale||1), (transform.rotDeg||0), outlinePx, 2);
+        scale = Math.max(0.01, fit.scale || 1);
+        offX = fit.clampOffsetX(transform.offsetX||0);
+        offY = fit.clampOffsetY(transform.offsetY||0);
+      } else {
+        scale = Math.max(0.01, (transform.scale || 1));
+      }
+      const dw = (shape === 'diecut') ? Math.max(1, Math.round(iw * base * scale)) : iw * base * scale;
+      const dh = (shape === 'diecut') ? Math.max(1, Math.round(ih * base * scale)) : ih * base * scale;
+      const cx = r.x + r.w/2 + offX;
+      const cy = r.y + r.h/2 + offY;
+      const rot = (transform.rotDeg || 0) * Math.PI/180;
+      return { cx, cy, w: dw, h: dh, rot };
     }
     function qrBoundingBox(){
       if (!qrObj.enabled || !qrObj.canvas) return null;
@@ -963,6 +1057,7 @@
         transform.offsetY = offsetStart.y + dy;
       }
       requestDraw();
+      updateHandles();
       e.preventDefault();
     }
     function endDrag(){ dragMode=null; }
@@ -985,6 +1080,192 @@
       else setToolTarget(null);
     }
     canvas.addEventListener('click', selectByPoint);
+
+    /* ===== Uchwyt rotacji ===== */
+    function activeTarget(){
+      if (lastToolTarget==='image' && uploaded.img) return 'image';
+      if (lastToolTarget==='text' && hasText()) return 'text';
+      if (lastToolTarget==='qr' && qrObj.enabled) return 'qr';
+      if (uploaded.img) return 'image';
+      if (hasText()) return 'text';
+      if (qrObj.enabled) return 'qr';
+      return null;
+    }
+
+    function targetBoundingBox(t){
+      if (t==='image') return imageBoundingBox();
+      if (t==='text') return textBoundingBox();
+      if (t==='qr') return qrBoundingBox();
+      return null;
+    }
+
+    function targetScale(t){
+      if (t==='qr') return qrObj.scale || 1;
+      if (t==='text') return textObj.scale || 1;
+      return transform.scale || 1;
+    }
+
+    function setTargetScale(t, val){
+      const clamped = Math.max(0.1, Math.min(6, val));
+      if (t==='qr'){ qrObj.scale = clamped; }
+      else if (t==='text'){ textObj.scale = clamped; }
+      else { transform.scale = clamped; }
+    }
+
+    function targetRotation(t){
+      if (t==='qr') return qrObj.rotDeg || 0;
+      if (t==='text') return textObj.rotDeg || 0;
+      return transform.rotDeg || 0;
+    }
+
+    function setTargetRotation(t, deg){
+      if (t==='qr'){ qrObj.rotDeg = deg; }
+      else if (t==='text'){ textObj.rotDeg = deg; }
+      else { transform.rotDeg = deg; }
+    }
+
+    function cornerForBox(box){
+      if (!box) return null;
+      const rot = box.rot || 0;
+      const cos = Math.cos(rot);
+      const sin = Math.sin(rot);
+      const dx = box.w/2;
+      const dy = -box.h/2;
+      return {
+        x: box.cx + dx * cos - dy * sin,
+        y: box.cy + dx * sin + dy * cos
+      };
+    }
+
+    function updateHandles(){
+      ensureHandleUI();
+      if (!handleState.panel || !handleState.layer) return;
+      const panel = handleState.panel;
+      const target = activeTarget();
+      if (!target){
+        panel.style.display = 'none';
+        return;
+      }
+      const box = targetBoundingBox(target);
+      if (!box){
+        panel.style.display = 'none';
+        return;
+      }
+      const sc = getCanvasScale();
+      const corner = cornerForBox(box);
+      if (!corner){
+        panel.style.display = 'none';
+        return;
+      }
+
+      panel.dataset.target = target;
+      const scaleVal = targetScale(target);
+      if (handleState.scaleRange){
+        const clamped = Math.max(0.1, Math.min(6, scaleVal || 1));
+        handleState.scaleRange.value = String(clamped);
+        if (handleState.scaleValue){
+          handleState.scaleValue.textContent = Math.round(clamped * 100) + '%';
+        }
+      }
+
+      panel.style.display = 'flex';
+      const rect = canvasRect();
+      if (!rect || !rect.width || !rect.height){
+        panel.style.display = 'none';
+        return;
+      }
+      const w = panel.offsetWidth || 0;
+      const h = panel.offsetHeight || 0;
+      const sx = sc.sx || 1;
+      const sy = sc.sy || 1;
+      let left = (corner.x * sx) + 10;
+      let top = (corner.y * sy) - h - 10;
+      const maxLeft = rect.width - w - 8;
+      const maxTop = rect.height - h - 8;
+      if (left > maxLeft) left = Math.max(8, maxLeft);
+      if (left < 8) left = 8;
+      if (top < 8) top = 8;
+      if (top > maxTop) top = Math.max(8, maxTop);
+      panel.style.left = left + 'px';
+      panel.style.top = top + 'px';
+    }
+
+    function handleRotateStart(evt){
+      ensureHandleUI();
+      if (!handleState.rotateBtn) return;
+      const target = activeTarget();
+      const box = targetBoundingBox(target);
+      if (!target || !box) return;
+      const pos = getPos(evt);
+      const cv = toCanvasXY(pos);
+      const startAngle = Math.atan2(cv.y - box.cy, cv.x - box.cx);
+      if (!isFinite(startAngle)) return;
+      handleState.rotateDrag = {
+        target,
+        cx: box.cx,
+        cy: box.cy,
+        startRot: targetRotation(target),
+        pointerStart: startAngle
+      };
+      setToolTarget(target);
+      window.addEventListener('mousemove', handleRotateMove, { passive:false });
+      window.addEventListener('touchmove', handleRotateMove, { passive:false });
+      window.addEventListener('mouseup', handleRotateEnd, { passive:false });
+      window.addEventListener('touchend', handleRotateEnd, { passive:false });
+      window.addEventListener('touchcancel', handleRotateEnd, { passive:false });
+      evt.preventDefault();
+      evt.stopPropagation();
+    }
+
+    function handleRotateMove(evt){
+      if (!handleState.rotateDrag) return;
+      const drag = handleState.rotateDrag;
+      const pos = getPos(evt);
+      const cv = toCanvasXY(pos);
+      const angle = Math.atan2(cv.y - drag.cy, cv.x - drag.cx);
+      if (!isFinite(angle)) return;
+      let deg = ((angle - drag.pointerStart) * 180/Math.PI) + drag.startRot;
+      if (!isFinite(deg)) deg = drag.startRot;
+      setTargetRotation(drag.target, deg);
+      requestDraw();
+      updateHandles();
+      evt.preventDefault();
+    }
+
+    function handleRotateEnd(){
+      handleState.rotateDrag = null;
+      window.removeEventListener('mousemove', handleRotateMove);
+      window.removeEventListener('touchmove', handleRotateMove);
+      window.removeEventListener('mouseup', handleRotateEnd);
+      window.removeEventListener('touchend', handleRotateEnd);
+      window.removeEventListener('touchcancel', handleRotateEnd);
+      updateHandles();
+    }
+
+    function handleScaleInput(){
+      const target = activeTarget();
+      if (!target || !handleState.scaleRange) return;
+      const val = parseFloat(handleState.scaleRange.value || '1');
+      setToolTarget(target);
+      setTargetScale(target, isFinite(val) ? val : 1);
+      if (handleState.scaleValue){
+        const clamped = Math.max(0.1, Math.min(6, isFinite(val) ? val : 1));
+        handleState.scaleValue.textContent = Math.round(clamped * 100) + '%';
+      }
+      requestDraw();
+      updateHandles();
+    }
+
+    if (handleState.rotateBtn){
+      handleState.rotateBtn.addEventListener('mousedown', handleRotateStart);
+      handleState.rotateBtn.addEventListener('touchstart', handleRotateStart, { passive:false });
+    }
+    if (handleState.scaleRange){
+      handleState.scaleRange.addEventListener('input', handleScaleInput);
+      handleState.scaleRange.addEventListener('change', handleScaleInput);
+    }
+
+    window.addEventListener('resize', updateHandles);
 
     /* ===== Upload/Pliki ===== */
     function prettyMeta(pxW, pxH, mime, sizeBytes, extra=''){
