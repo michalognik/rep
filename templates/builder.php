@@ -132,6 +132,8 @@ if ( ! defined( 'ABSPATH' ) ) {
                     <p>Sprawdź cenę i otwórz kreator, aby dopracować projekt.</p>
                     <div class="total-val" id="stb-total">0,00 zł</div>
                     <div class="total-net" id="stb-total-net">Netto: 0,00 zł</div>
+                    <div class="total-save" id="stb-total-save" aria-live="polite"></div>
+                    <div class="total-lead" id="stb-total-lead" aria-live="polite"></div>
                 </div>
                 <div class="cta">
                     <button type="button" class="btn" id="stb-open-modal">Otwórz kreator</button>
@@ -165,7 +167,13 @@ if ( ! defined( 'ABSPATH' ) ) {
                                         <svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="9 3 15 3 21 9 21 15 15 21 9 21 3 15 3 9"></polygon></svg>
                                     </button>
                                     <button type="button" class="shape-btn" data-shape="diecut" aria-pressed="false">
-                                        <span class="shape-label">DIECUT</span>
+                                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                                            <circle cx="7.5" cy="8" r="2.2"></circle>
+                                            <circle cx="16.5" cy="8" r="2.2"></circle>
+                                            <circle cx="9.3" cy="14.2" r="2.1"></circle>
+                                            <circle cx="14.7" cy="14.2" r="2.1"></circle>
+                                            <path d="M12 11.8c-3.2 0-5.3 2.5-5.3 5.1 0 2.4 1.9 4.1 5.3 4.1s5.3-1.7 5.3-4.1c0-2.6-2.1-5.1-5.3-5.1z"></path>
+                                        </svg>
                                     </button>
                                 </div>
                             </div>
@@ -281,13 +289,6 @@ if ( ! defined( 'ABSPATH' ) ) {
                                         <option value="Handlee" style="font-family: 'Handlee', cursive;">Handlee</option>
                                     </select>
                                 </label>
-                                <label class="stb-field stb-color-field">
-                                    <span class="stb-lbl">Kolor tekstu</span>
-                                    <div class="stb-color-input">
-                                        <input type="color" id="stb-text-color" value="#111111" data-default="#111111">
-                                        <button type="button" class="btn btn-icon color-reset" data-reset-color="stb-text-color" aria-label="Resetuj kolor tekstu"><span aria-hidden="true">↺</span></button>
-                                    </div>
-                                </label>
                                 <div class="stb-text-toolbar" role="group" aria-label="Formatowanie tekstu">
                                     <button type="button" class="btn btn-icon" id="stb-text-bold" aria-pressed="false" title="Pogrubienie">
                                         <span class="icon-letter icon-letter-bold" aria-hidden="true">B</span>
@@ -295,7 +296,18 @@ if ( ! defined( 'ABSPATH' ) ) {
                                     <button type="button" class="btn btn-icon" id="stb-text-italic" aria-pressed="false" title="Pochylenie">
                                         <span class="icon-letter icon-letter-italic" aria-hidden="true">I</span>
                                     </button>
+                                    <label class="stb-text-color">
+                                        <span class="stb-lbl">Kolor</span>
+                                        <div class="stb-color-input">
+                                            <input type="color" id="stb-text-color" value="#111111" data-default="#111111">
+                                            <button type="button" class="btn btn-icon color-reset" data-reset-color="stb-text-color" aria-label="Resetuj kolor tekstu"><span aria-hidden="true">↺</span></button>
+                                        </div>
+                                    </label>
                                 </div>
+                                <label class="stb-field stb-text-size">
+                                    <span class="stb-lbl">Rozmiar: <strong id="stb-text-size-val">100%</strong></span>
+                                    <input type="range" id="stb-text-size" min="0.4" max="4" step="0.05" value="1">
+                                </label>
                             </div>
                         </div>
                     </div>
@@ -346,7 +358,7 @@ if ( ! defined( 'ABSPATH' ) ) {
                                 <div class="stb-row" data-qr-section="url">
                                     <label class="stb-field">
                                         <span class="stb-lbl">Adres URL</span>
-                                        <input type="url" id="stb-qr-url" placeholder="https://">
+                                        <input type="url" id="stb-qr-url" class="stb-url-input" placeholder="https://">
                                     </label>
                                 </div>
                                 <div class="stb-row" data-qr-section="wifi" hidden>

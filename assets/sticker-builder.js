@@ -112,6 +112,8 @@
 
     const totalOut    = byId('stb-total');
     const totalNetOut = byId('stb-total-net');
+    const totalSaveOut= byId('stb-total-save');
+    const totalLeadOut= byId('stb-total-lead');
     const addBtn      = byId('stb-add');
     const addBtnModal = byId('stb-add-modal');
 
@@ -176,6 +178,8 @@
     const textColorEl   = byId('stb-text-color');
     const textBoldBtn   = byId('stb-text-bold');
     const textItalicBtn = byId('stb-text-italic');
+    const textSizeInput = byId('stb-text-size');
+    const textSizeVal   = byId('stb-text-size-val');
 
     // QR — proste UI
     const qrRemBtn  = byId('stb-qr-remove-btn');
@@ -219,6 +223,31 @@
     });
 
     let textObj = defaultTextObj();
+
+    function textSizeBounds(){
+      if (!textSizeInput) return { min:0.4, max:4 };
+      const min = parseFloat(textSizeInput.min);
+      const max = parseFloat(textSizeInput.max);
+      return {
+        min: Number.isFinite(min) ? min : 0.4,
+        max: Number.isFinite(max) ? max : 4
+      };
+    }
+    function clampTextScale(val){
+      const num = parseFloat(val);
+      if (!Number.isFinite(num)) return 1;
+      return Math.max(0.1, Math.min(6, num));
+    }
+    function updateTextSizeUI(){
+      if (!textSizeInput) return;
+      const bounds = textSizeBounds();
+      const current = clampTextScale(textObj?.scale ?? 1);
+      const sliderVal = Math.max(bounds.min, Math.min(bounds.max, current));
+      textSizeInput.value = (Math.round(sliderVal * 100) / 100).toString();
+      if (textSizeVal){
+        textSizeVal.textContent = Math.round(current * 100) + '%';
+      }
+    }
 
     // QR (davidshimjs) – generujemy offscreen canvas
     let qrObj = {
@@ -947,6 +976,7 @@
         delBtn.style.opacity = uploaded.img ? '1' : '.6';
       }
 
+      updateTextSizeUI();
       refreshQtyPrices();
       updatePriceAndJSON();
       updateHandles();
@@ -1127,7 +1157,7 @@
     function setTargetScale(t, val){
       const clamped = Math.max(0.1, Math.min(6, val));
       if (t==='qr'){ qrObj.scale = clamped; }
-      else if (t==='text'){ textObj.scale = clamped; }
+      else if (t==='text'){ textObj.scale = clamped; updateTextSizeUI(); }
       else { transform.scale = clamped; }
     }
 
@@ -1433,6 +1463,18 @@
         requestDraw();
       });
     }
+    if (textSizeInput){
+      textSizeInput.addEventListener('input', ()=>{
+        const bounds = textSizeBounds();
+        const raw = parseFloat(textSizeInput.value);
+        if (!Number.isFinite(raw)) return;
+        const clamped = Math.max(bounds.min, Math.min(bounds.max, raw));
+        textObj.scale = clampTextScale(clamped);
+        updateTextSizeUI();
+        if (hasText()) setToolTarget('text');
+        requestDraw();
+      });
+    }
 
     const updateTextStyleButtons = ()=>{
       if (textBoldBtn){
@@ -1445,6 +1487,7 @@
         textItalicBtn.setAttribute('aria-pressed', isItalic ? 'true' : 'false');
         textItalicBtn.classList.toggle('is-active', isItalic);
       }
+      updateTextSizeUI();
     };
 
     if (textBoldBtn){
@@ -1631,7 +1674,9 @@
       const c = calc || computeTotalForQty(qty);
       const days = leadTimeBusinessDays(c.total_area || 0);
       const target = addBusinessDays(new Date(), days);
-      if (sumLeadtimeEl) sumLeadtimeEl.textContent = 'Wysyłka do ' + formatPLDateOnly(target);
+      const leadText = 'Wysyłka do ' + formatPLDateOnly(target);
+      if (sumLeadtimeEl) sumLeadtimeEl.textContent = leadText;
+      if (totalLeadOut) totalLeadOut.textContent = leadText;
     }
 
     // popup do wyceny
@@ -1664,9 +1709,16 @@
     function updatePriceAndJSON(){
       const qty = getCurrentQty();
       const calc = computeTotalForQty(qty);
+      const baseline = computeBaselineA(qty);
+      let pctSave = 0;
+      if (baseline > 0.0001){
+        const ratioPct = (calc.total / baseline) * 100;
+        pctSave = Math.max(0, 100 - ratioPct);
+      }
 
       if (totalOut)    totalOut.textContent = (calc.total_area >= 100 ? 'WYCENA INDYWIDUALNA' : fmtMoney(calc.total));
       if (totalNetOut) totalNetOut.textContent = (calc.total_area >= 100 ? '' : (fmtMoney(calc.net) + ' netto'));
+      if (totalSaveOut) totalSaveOut.textContent = (pctSave >= 0.5) ? ('Oszczędzasz ' + Math.round(pctSave) + '%') : '';
 
       const w_cm=parseNum(wEl,10), h_cm=parseNum(hEl,10);
       if (sumDims)  sumDims.textContent = `${(w_cm).toString().replace('.',',')} × ${(h_cm).toString().replace('.',',')} cm`;
@@ -1844,6 +1896,7 @@
       } else if (tgt==='text'){
         const ns = (textObj.scale || 1) * (1 + delta);
         textObj.scale = Math.max(0.1, Math.min(6, ns));
+        updateTextSizeUI();
       } else {
         const ns = (transform.scale || 1) * (1 + delta);
         transform.scale = Math.max(0.1, Math.min(6, ns));
@@ -1869,6 +1922,7 @@
         qrObj.offsetX = 0; qrObj.offsetY = 0; qrObj.scale = 1; qrObj.rotDeg = 0;
       } else if (tgt==='text'){
         textObj.offsetX = 0; textObj.offsetY = 0; textObj.scale = 1; textObj.rotDeg = 0;
+        updateTextSizeUI();
       } else {
         transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
       }
