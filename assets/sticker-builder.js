@@ -171,12 +171,11 @@
     const sumLeadtimeEl = byId('sum-leadtime');
 
     // Tekst
-    const textInput   = byId('stb-text-input');
-    const textFontSel = byId('stb-text-font');
-    const textColorEl = byId('stb-text-color');
-    const textClear   = byId('stb-text-clear');
-    const textCenter  = byId('stb-text-center');
-    const textReset   = byId('stb-text-reset');
+    const textInput     = byId('stb-text-input');
+    const textFontSel   = byId('stb-text-font');
+    const textColorEl   = byId('stb-text-color');
+    const textBoldBtn   = byId('stb-text-bold');
+    const textItalicBtn = byId('stb-text-italic');
 
     // QR — proste UI
     const qrRemBtn  = byId('stb-qr-remove-btn');
@@ -207,7 +206,19 @@
     // shapes: rect|circle|ellipse|triangle|octagon|diecut
     let shape='rect', ellipseRatio=1.0;
 
-    let textObj = { text:'', font:(textFontSel?.value||'Inter'), color:'#111111', scale:1, rotDeg:0, offsetX:0, offsetY:0 };
+    const defaultTextObj = ()=>({
+      text:'',
+      font:(textFontSel?.value||'Inter'),
+      color:(textColorEl?.value||'#111111'),
+      weight:'normal',
+      italic:false,
+      scale:1,
+      rotDeg:0,
+      offsetX:0,
+      offsetY:0
+    });
+
+    let textObj = defaultTextObj();
 
     // QR (davidshimjs) – generujemy offscreen canvas
     let qrObj = {
@@ -221,6 +232,13 @@
     let qrLibMissingWarned = false;
 
     const hasText = ()=> !!(textObj.text && textObj.text.trim().length);
+    const TEXT_FONT_FALLBACK = ", system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+    const textFontString = (px)=>{
+      const size = Math.max(6, px).toFixed(0);
+      const italic = textObj.italic ? 'italic ' : '';
+      const weight = (textObj.weight === 'bold') ? '700 ' : '400 ';
+      return `${italic}${weight}${size}px ${quoteFont(textObj.font || 'Inter')}${TEXT_FONT_FALLBACK}`;
+    };
 
     /* ===== HUD dla uchwytów skali/rotacji ===== */
     const canvasBox = canvas ? (canvas.closest('.canvas-box') || canvas.parentElement) : null;
@@ -228,7 +246,8 @@
       layer:null,
       panel:null,
       rotateBtn:null,
-      scaleRange:null,
+      scaleDec:null,
+      scaleInc:null,
       scaleValue:null,
       rotateDrag:null
     };
@@ -245,32 +264,30 @@
       rotateBtn.type = 'button';
       rotateBtn.className = 'stb-handle-rotate';
       rotateBtn.setAttribute('aria-label', 'Obróć element');
-      rotateBtn.innerHTML = '<span aria-hidden="true">⟳</span>';
+      rotateBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15.2 6.5h3.3V3.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><path d="M18.5 11.5a6.5 6.5 0 1 0-1.9 4.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
 
       const scaleRow = document.createElement('div');
       scaleRow.className = 'stb-scale-row';
 
-      const scaleIcon = document.createElement('span');
-      scaleIcon.className = 'stb-scale-icon';
-      scaleIcon.setAttribute('aria-hidden', 'true');
-      scaleIcon.textContent = '⤢';
-
-      const scaleRange = document.createElement('input');
-      scaleRange.type = 'range';
-      scaleRange.className = 'stb-scale-range';
-      scaleRange.min = '0.1';
-      scaleRange.max = '6';
-      scaleRange.step = '0.01';
-      scaleRange.value = '1';
-      scaleRange.setAttribute('aria-label', 'Skala elementu');
+      const scaleDec = document.createElement('button');
+      scaleDec.type = 'button';
+      scaleDec.className = 'stb-scale-btn stb-scale-btn--down';
+      scaleDec.setAttribute('aria-label', 'Pomniejsz element');
+      scaleDec.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"></circle><line x1="8.2" y1="10.5" x2="12.8" y2="10.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></line><line x1="14.8" y1="14.8" x2="19.2" y2="19.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></line></svg>';
 
       const scaleValue = document.createElement('span');
       scaleValue.className = 'stb-scale-value';
       scaleValue.textContent = '100%';
 
-      scaleRow.appendChild(scaleIcon);
-      scaleRow.appendChild(scaleRange);
+      const scaleInc = document.createElement('button');
+      scaleInc.type = 'button';
+      scaleInc.className = 'stb-scale-btn stb-scale-btn--up';
+      scaleInc.setAttribute('aria-label', 'Powiększ element');
+      scaleInc.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"></circle><line x1="10.5" y1="8.2" x2="10.5" y2="12.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></line><line x1="8.2" y1="10.5" x2="12.8" y2="10.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></line><line x1="14.8" y1="14.8" x2="19.2" y2="19.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></line></svg>';
+
+      scaleRow.appendChild(scaleDec);
       scaleRow.appendChild(scaleValue);
+      scaleRow.appendChild(scaleInc);
 
       panel.appendChild(rotateBtn);
       panel.appendChild(scaleRow);
@@ -280,7 +297,8 @@
       handleState.layer = layer;
       handleState.panel = panel;
       handleState.rotateBtn = rotateBtn;
-      handleState.scaleRange = scaleRange;
+      handleState.scaleDec = scaleDec;
+      handleState.scaleInc = scaleInc;
       handleState.scaleValue = scaleValue;
     }
 
@@ -889,7 +907,7 @@
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = textObj.color || '#111111';
-        ctx.font = `${Math.max(6, fontPx).toFixed(0)}px ${quoteFont(textObj.font || 'Inter')}, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+        ctx.font = textFontString(fontPx);
         ctx.fillText(textObj.text, 0, 0);
         ctx.restore();
       }
@@ -959,7 +977,7 @@
       if (!textObj.text || !textObj.text.trim().length) return null;
       const r = getDrawRect();
       const basePx = Math.min(r.w, r.h)*0.18, fontPx = basePx*(textObj.scale||1);
-      ctx.save(); ctx.font = `${Math.max(6, fontPx).toFixed(0)}px ${quoteFont(textObj.font||'Inter')}, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+      ctx.save(); ctx.font = textFontString(fontPx);
       const m = ctx.measureText(textObj.text); ctx.restore();
       const w = Math.max(10, (m.width||0));
       const h = Math.max(10, fontPx*1.2);
@@ -1159,13 +1177,9 @@
       }
 
       panel.dataset.target = target;
-      const scaleVal = targetScale(target);
-      if (handleState.scaleRange){
-        const clamped = Math.max(0.1, Math.min(6, scaleVal || 1));
-        handleState.scaleRange.value = String(clamped);
-        if (handleState.scaleValue){
-          handleState.scaleValue.textContent = Math.round(clamped * 100) + '%';
-        }
+      const scaleVal = Math.max(0.1, Math.min(6, targetScale(target) || 1));
+      if (handleState.scaleValue){
+        handleState.scaleValue.textContent = Math.round(scaleVal * 100) + '%';
       }
 
       panel.style.display = 'flex';
@@ -1242,15 +1256,19 @@
       updateHandles();
     }
 
-    function handleScaleInput(){
+    function adjustHandleScale(direction){
       const target = activeTarget();
-      if (!target || !handleState.scaleRange) return;
-      const val = parseFloat(handleState.scaleRange.value || '1');
+      if (!target) return;
+      const current = Math.max(0.1, Math.min(6, targetScale(target) || 1));
+      const factor = direction > 0 ? 1.1 : (1/1.1);
+      let next = current * factor;
+      if (!isFinite(next)) next = current;
+      next = Math.max(0.1, Math.min(6, next));
+      next = Math.round(next * 100) / 100;
       setToolTarget(target);
-      setTargetScale(target, isFinite(val) ? val : 1);
+      setTargetScale(target, next);
       if (handleState.scaleValue){
-        const clamped = Math.max(0.1, Math.min(6, isFinite(val) ? val : 1));
-        handleState.scaleValue.textContent = Math.round(clamped * 100) + '%';
+        handleState.scaleValue.textContent = Math.round(next * 100) + '%';
       }
       requestDraw();
       updateHandles();
@@ -1260,9 +1278,11 @@
       handleState.rotateBtn.addEventListener('mousedown', handleRotateStart);
       handleState.rotateBtn.addEventListener('touchstart', handleRotateStart, { passive:false });
     }
-    if (handleState.scaleRange){
-      handleState.scaleRange.addEventListener('input', handleScaleInput);
-      handleState.scaleRange.addEventListener('change', handleScaleInput);
+    if (handleState.scaleDec){
+      handleState.scaleDec.addEventListener('click', ()=> adjustHandleScale(-1));
+    }
+    if (handleState.scaleInc){
+      handleState.scaleInc.addEventListener('click', ()=> adjustHandleScale(1));
     }
 
     window.addEventListener('resize', updateHandles);
@@ -1458,22 +1478,37 @@
         requestDraw();
       });
     }
-    if (textClear){
-      textClear.addEventListener('click', ()=>{
-        textObj = { text:'', font:(textFontSel?.value||'Inter'), color:(textColorEl?.value||'#111111'), scale:1, rotDeg:0, offsetX:0, offsetY:0 };
-        if (textInput) textInput.value = '';
-        if (lastToolTarget === 'text') setToolTarget(null);
+
+    const updateTextStyleButtons = ()=>{
+      if (textBoldBtn){
+        const isBold = textObj.weight === 'bold';
+        textBoldBtn.setAttribute('aria-pressed', isBold ? 'true' : 'false');
+        textBoldBtn.classList.toggle('is-active', isBold);
+      }
+      if (textItalicBtn){
+        const isItalic = !!textObj.italic;
+        textItalicBtn.setAttribute('aria-pressed', isItalic ? 'true' : 'false');
+        textItalicBtn.classList.toggle('is-active', isItalic);
+      }
+    };
+
+    if (textBoldBtn){
+      textBoldBtn.addEventListener('click', ()=>{
+        textObj.weight = (textObj.weight === 'bold') ? 'normal' : 'bold';
+        updateTextStyleButtons();
+        if (hasText()) setToolTarget('text');
         requestDraw();
       });
     }
-    if (textCenter){ textCenter.addEventListener('click', ()=>{ setToolTarget('text'); textObj.offsetX=0; textObj.offsetY=0; requestDraw(); }); }
-    if (textReset){
-      textReset.addEventListener('click', ()=>{
-        textObj.scale=1; textObj.rotDeg=0;
-        setToolTarget('text');
+    if (textItalicBtn){
+      textItalicBtn.addEventListener('click', ()=>{
+        textObj.italic = !textObj.italic;
+        updateTextStyleButtons();
+        if (hasText()) setToolTarget('text');
         requestDraw();
       });
     }
+    updateTextStyleButtons();
 
     function initColorResets(){
       $$('.color-reset[data-reset-color]').forEach(btn=>{
@@ -1718,6 +1753,8 @@
             value: textObj.text || '',
             font: textObj.font || 'Inter',
             color: textObj.color || '#111111',
+            weight: textObj.weight === 'bold' ? 'bold' : 'normal',
+            italic: !!textObj.italic,
             scale: +(textObj.scale||1),
             rotDeg: +(textObj.rotDeg||0),
             offsetX: +(textObj.offsetX||0),
@@ -1901,13 +1938,11 @@
       }
       if (tgt === 'text'){
         setToolTarget('text');
-        if (textClear) textClear.click();
-        else {
-          textObj = { text:'', font:(textFontSel?.value||'Inter'), color:(textColorEl?.value||'#111111'), scale:1, rotDeg:0, offsetX:0, offsetY:0 };
-          if (textInput) textInput.value='';
-          setToolTarget(null);
-          requestDraw();
-        }
+        textObj = defaultTextObj();
+        if (textInput) textInput.value='';
+        updateTextStyleButtons();
+        setToolTarget(null);
+        requestDraw();
         return;
       }
       if (uploaded.img){
@@ -2114,7 +2149,7 @@
             octx.rotate(((textObj.rotDeg || 0) * Math.PI)/180);
             octx.textAlign = 'center'; octx.textBaseline = 'middle';
             octx.fillStyle = textObj.color || '#111111';
-            octx.font = `${Math.max(6, fontPx).toFixed(0)}px ${quoteFont(textObj.font || 'Inter')}, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+            octx.font = textFontString(fontPx);
             octx.fillText(textObj.text, 0, 0);
             octx.restore();
           });

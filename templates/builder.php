@@ -288,10 +288,13 @@ if ( ! defined( 'ABSPATH' ) ) {
                                         <button type="button" class="btn btn-icon color-reset" data-reset-color="stb-text-color" aria-label="Resetuj kolor tekstu"><span aria-hidden="true">↺</span></button>
                                     </div>
                                 </label>
-                                <div class="stb-inline">
-                                    <button type="button" class="btn" id="stb-text-clear">Wyczyść</button>
-                                    <button type="button" class="btn" id="stb-text-center">Wyśrodkuj</button>
-                                    <button type="button" class="btn" id="stb-text-reset">Resetuj skalę</button>
+                                <div class="stb-text-toolbar" role="group" aria-label="Formatowanie tekstu">
+                                    <button type="button" class="btn btn-icon" id="stb-text-bold" aria-pressed="false" title="Pogrubienie">
+                                        <span class="icon-letter icon-letter-bold" aria-hidden="true">B</span>
+                                    </button>
+                                    <button type="button" class="btn btn-icon" id="stb-text-italic" aria-pressed="false" title="Pochylenie">
+                                        <span class="icon-letter icon-letter-italic" aria-hidden="true">I</span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -388,28 +391,64 @@ if ( ! defined( 'ABSPATH' ) ) {
                 <div class="preview-panel">
                     <div class="stb-toolbar">
                         <button type="button" class="btn btn-icon" id="tb-zoom-out" title="Oddal" aria-label="Oddal">
-                            <span aria-hidden="true">−</span>
+                            <svg viewBox="0 0 24 24" class="stb-icon" aria-hidden="true" focusable="false">
+                                <circle cx="10.5" cy="10.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                                <line x1="8.2" y1="10.5" x2="12.8" y2="10.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                <line x1="14.8" y1="14.8" x2="19.2" y2="19.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                            </svg>
                         </button>
                         <button type="button" class="btn btn-icon" id="tb-zoom-in" title="Przybliż" aria-label="Przybliż">
-                            <span aria-hidden="true">+</span>
+                            <svg viewBox="0 0 24 24" class="stb-icon" aria-hidden="true" focusable="false">
+                                <circle cx="10.5" cy="10.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                                <line x1="10.5" y1="8.2" x2="10.5" y2="12.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                <line x1="8.2" y1="10.5" x2="12.8" y2="10.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                <line x1="14.8" y1="14.8" x2="19.2" y2="19.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                            </svg>
                         </button>
                         <button type="button" class="btn btn-icon" id="tb-fit" title="Wycentruj i dopasuj" aria-label="Wycentruj i dopasuj">
-                            <span aria-hidden="true">⤢</span>
+                            <svg viewBox="0 0 24 24" class="stb-icon" aria-hidden="true" focusable="false">
+                                <polyline points="9 4 4 4 4 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                <polyline points="15 4 20 4 20 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                <polyline points="9 20 4 20 4 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                <polyline points="15 20 20 20 20 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                <rect x="9" y="9" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                            </svg>
                         </button>
                         <button type="button" class="btn btn-icon" id="tb-rot--" title="Obróć w lewo" aria-label="Obróć w lewo">
-                            <span aria-hidden="true">⟲</span>
+                            <svg viewBox="0 0 24 24" class="stb-icon" aria-hidden="true" focusable="false">
+                                <path d="M8.5 7H5.2V3.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M5.5 11.5a6.5 6.5 0 1 1 1.9 4.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
                         </button>
                         <button type="button" class="btn btn-icon" id="tb-rot-+" title="Obróć w prawo" aria-label="Obróć w prawo">
-                            <span aria-hidden="true">⟳</span>
+                            <svg viewBox="0 0 24 24" class="stb-icon" aria-hidden="true" focusable="false">
+                                <path d="M15.5 7H18.8V3.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M18.5 11.5a6.5 6.5 0 1 0-1.9 4.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
                         </button>
                         <button type="button" class="btn btn-icon" id="tb-grid" title="Pokaż/ukryj siatkę" aria-label="Pokaż lub ukryj siatkę">
-                            <span aria-hidden="true">⧉</span>
+                            <svg viewBox="0 0 24 24" class="stb-icon" aria-hidden="true" focusable="false">
+                                <rect x="4" y="4" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                                <line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" stroke-width="1.6"/>
+                                <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="1.6"/>
+                            </svg>
                         </button>
                         <button type="button" class="btn btn-icon" id="tb-delete" title="Usuń element" aria-label="Usuń element">
-                            <span aria-hidden="true">✕</span>
+                            <svg viewBox="0 0 24 24" class="stb-icon" aria-hidden="true" focusable="false">
+                                <rect x="7" y="8" width="10" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                                <line x1="5" y1="5" x2="19" y2="5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                <line x1="10" y1="5" x2="10" y2="3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                <line x1="14" y1="5" x2="14" y2="3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                <line x1="10" y1="10" x2="10" y2="17" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                                <line x1="14" y1="10" x2="14" y2="17" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                            </svg>
                         </button>
                         <button type="button" class="btn btn-icon" id="tb-pdf" title="Eksportuj do PDF" aria-label="Eksportuj do PDF">
-                            <span aria-hidden="true">⤓</span>
+                            <svg viewBox="0 0 24 24" class="stb-icon" aria-hidden="true" focusable="false">
+                                <path d="M12 3v12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                <polyline points="8.5 11 12 14.5 15.5 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                <rect x="6" y="16" width="12" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                            </svg>
                         </button>
                     </div>
                     <div class="canvas-box">
