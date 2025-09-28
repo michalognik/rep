@@ -69,19 +69,25 @@
 #stb-root .cta{ display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap }
 #stb-root .btn{
   appearance:none; border:1px solid var(--line) !important; background:#fff !important; color:#111 !important;
-  border-radius:999px; padding:8px 12px; font-weight:800; letter-spacing:.02em; cursor:pointer; line-height:1; font-size:.9rem;
-  text-transform:none !important; box-shadow:none !important; text-shadow:none !important;
+  border-radius:999px; padding:8px 14px; font-weight:800; letter-spacing:.02em; cursor:pointer; line-height:1;
+  font-size:.9rem; text-transform:none !important; box-shadow:none !important; text-shadow:none !important;
+  display:inline-flex; align-items:center; justify-content:center; gap:6px; white-space:nowrap; overflow:hidden;
 }
-#stb-root .btn-icon{
-  width:38px; height:38px; padding:0;
-  border-radius:12px; display:flex; align-items:center; justify-content:center;
-  line-height:1; overflow:hidden;
+#stb-root .btn-icon,
+.stb-modal .btn-icon{
+  width:40px !important; height:40px !important; min-width:40px !important;
+  padding:0 !important; border-radius:12px !important;
+  display:inline-flex; align-items:center; justify-content:center;
+  overflow:hidden !important; font-size:0; line-height:1;
 }
 #stb-root .btn-icon svg,
-#stb-root .btn-icon .stb-icon{
-  width:20px; height:20px; display:block;
+.stb-modal .btn-icon svg,
+#stb-root .btn-icon .stb-icon,
+.stb-modal .btn-icon .stb-icon{
+  width:22px; height:22px; display:block;
 }
-#stb-root .btn-icon span{ display:inline-flex; align-items:center; justify-content:center; width:100%; pointer-events:none; }
+#stb-root .btn-icon span,
+.stb-modal .btn-icon span{ display:inline-flex; align-items:center; justify-content:center; width:100%; pointer-events:none; font-size:1.05rem; line-height:1; }
 #stb-root .btn-primary{ background:var(--accent) !important; border-color:var(--accent) !important; color:#fff !important }
 #stb-root .btn:disabled{ opacity:.6; cursor:not-allowed }
 
@@ -124,8 +130,9 @@ body.stb-lock{ overflow:hidden }
 /* hard overrides na motyw */
 .stb-modal button,.stb-modal .button,.stb-modal .btn{
   background:#fff !important; border:1px solid var(--line) !important; color:#111 !important;
-  border-radius:999px !important; padding:8px 12px !important; font-weight:800 !important; letter-spacing:.02em !important;
+  border-radius:999px !important; padding:8px 14px !important; font-weight:800 !important; letter-spacing:.02em !important;
   box-shadow:none !important; text-shadow:none !important; text-transform:none !important;
+  display:inline-flex !important; align-items:center; justify-content:center; gap:6px; white-space:nowrap; overflow:hidden;
 }
 .stb-modal .btn.btn-primary,.stb-modal .button.alt,.stb-modal button.primary{
   background:var(--accent) !important; border-color:var(--accent) !important; color:#fff !important;
@@ -257,11 +264,16 @@ body.stb-lock{ overflow:hidden }
 .stb-color-input{
   display:flex; align-items:center; gap:6px;
 }
-#stb-root .stb-color-input .color-reset{
-  width:32px !important; height:32px !important; min-width:32px !important;
-  border-radius:8px; font-size:.9rem;
-  display:flex; align-items:center; justify-content:center;
-  padding:0; overflow:hidden;
+#stb-root .stb-color-input .color-reset,
+.stb-modal .stb-color-input .color-reset{
+  width:36px !important; height:36px !important; min-width:36px !important;
+  border-radius:10px; font-size:0;
+  display:inline-flex; align-items:center; justify-content:center;
+  padding:0 !important; overflow:hidden !important;
+}
+#stb-root .stb-color-input .color-reset span,
+.stb-modal .stb-color-input .color-reset span{
+  font-size:1rem; line-height:1;
 }
 .stb-color-input input[type="color"]{ flex:1 1 auto; min-width:0; }
 
@@ -316,69 +328,42 @@ body.stb-lock{ overflow:hidden }
 .stb-handle-panel{
   position:absolute;
   display:none;
-  flex-direction:column;
-  gap:10px;
-  padding:10px 12px;
-  border-radius:12px;
+  padding:10px;
+  border-radius:14px;
   border:1px solid var(--line);
   background:rgba(255,255,255,0.95);
   box-shadow:0 10px 22px rgba(17,25,40,0.2);
   pointer-events:auto;
-  min-width:140px;
   backdrop-filter:blur(8px);
 }
-.stb-handle-rotate{
-  width:36px;
-  height:36px;
-  border-radius:50%;
+.stb-handle-pad{
+  display:grid;
+  grid-template-columns:repeat(2, 46px);
+  grid-auto-rows:46px;
+  gap:6px;
+}
+.stb-handle-btn{
   border:1px solid var(--line);
+  border-radius:12px;
   background:#fff;
-  display:flex;
+  display:inline-flex;
   align-items:center;
   justify-content:center;
   cursor:pointer;
   transition:.15s ease;
+  width:46px;
+  height:46px;
+  overflow:hidden;
 }
-.stb-handle-rotate svg{ width:20px; height:20px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
-.stb-handle-rotate:hover,
-.stb-handle-rotate:focus{
+.stb-handle-btn svg{
+  width:22px; height:22px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round;
+}
+.stb-handle-btn:hover,
+.stb-handle-btn:focus{
   border-color:var(--accent);
   color:var(--accent);
   outline:none;
   box-shadow:0 0 0 2px rgba(45,127,249,.15);
-}
-.stb-scale-row{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:10px;
-}
-.stb-scale-btn{
-  width:34px;
-  height:34px;
-  border-radius:50%;
-  border:1px solid var(--line);
-  background:#fff;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  cursor:pointer;
-  transition:.15s ease;
-}
-.stb-scale-btn svg{ width:20px; height:20px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
-.stb-scale-btn:hover,
-.stb-scale-btn:focus{
-  border-color:var(--accent);
-  color:var(--accent);
-  outline:none;
-  box-shadow:0 0 0 2px rgba(45,127,249,.15);
-}
-.stb-scale-value{
-  font-size:.78rem;
-  color:var(--muted);
-  min-width:48px;
-  text-align:center;
-  font-weight:600;
 }
 
 /* ===== Pasek formatowania tekstu ===== */
@@ -389,7 +374,7 @@ body.stb-lock{ overflow:hidden }
   align-items:center;
   margin-top:4px;
 }
-.stb-text-toolbar .btn-icon{ border-radius:10px; width:36px; height:36px; }
+.stb-text-toolbar .btn-icon{ border-radius:10px !important; width:40px !important; height:40px !important; }
 .stb-text-toolbar .btn-icon[aria-pressed="true"],
 .stb-text-toolbar .btn-icon.is-active{
   border-color:var(--accent) !important;
@@ -413,7 +398,7 @@ body.stb-lock{ overflow:hidden }
 
 /* ===== Drobne dopieszczenia QR ===== */
 #acc-qr .stb-row{ gap:10px }
-#acc-qr .stb-inline .btn{ height:34px; padding:6px 12px }
+#acc-qr .stb-inline .btn{ height:38px; min-height:38px; padding:6px 14px }
 #acc-qr .stb-field input[type="text"],
 #acc-qr .stb-field textarea{ width:100% }
 

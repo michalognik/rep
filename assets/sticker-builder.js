@@ -245,11 +245,10 @@
     const handleState = {
       layer:null,
       panel:null,
-      rotateBtn:null,
-      scaleDec:null,
-      scaleInc:null,
-      scaleValue:null,
-      rotateDrag:null
+      btnZoomOut:null,
+      btnZoomIn:null,
+      btnRotLeft:null,
+      btnRotRight:null
     };
 
     function ensureHandleUI(){
@@ -260,46 +259,48 @@
       panel.className = 'stb-handle-panel';
       panel.style.display = 'none';
 
-      const rotateBtn = document.createElement('button');
-      rotateBtn.type = 'button';
-      rotateBtn.className = 'stb-handle-rotate';
-      rotateBtn.setAttribute('aria-label', 'Obróć element');
-      rotateBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15.2 6.5h3.3V3.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><path d="M18.5 11.5a6.5 6.5 0 1 0-1.9 4.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
+      const pad = document.createElement('div');
+      pad.className = 'stb-handle-pad';
 
-      const scaleRow = document.createElement('div');
-      scaleRow.className = 'stb-scale-row';
+      const zoomOutBtn = document.createElement('button');
+      zoomOutBtn.type = 'button';
+      zoomOutBtn.className = 'stb-handle-btn stb-handle-btn--zoom-out';
+      zoomOutBtn.setAttribute('aria-label', 'Pomniejsz element');
+      zoomOutBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
 
-      const scaleDec = document.createElement('button');
-      scaleDec.type = 'button';
-      scaleDec.className = 'stb-scale-btn stb-scale-btn--down';
-      scaleDec.setAttribute('aria-label', 'Pomniejsz element');
-      scaleDec.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"></circle><line x1="8.2" y1="10.5" x2="12.8" y2="10.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></line><line x1="14.8" y1="14.8" x2="19.2" y2="19.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></line></svg>';
+      const zoomInBtn = document.createElement('button');
+      zoomInBtn.type = 'button';
+      zoomInBtn.className = 'stb-handle-btn stb-handle-btn--zoom-in';
+      zoomInBtn.setAttribute('aria-label', 'Powiększ element');
+      zoomInBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><path d="M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
 
-      const scaleValue = document.createElement('span');
-      scaleValue.className = 'stb-scale-value';
-      scaleValue.textContent = '100%';
+      const rotLeftBtn = document.createElement('button');
+      rotLeftBtn.type = 'button';
+      rotLeftBtn.className = 'stb-handle-btn stb-handle-btn--rot-left';
+      rotLeftBtn.setAttribute('aria-label', 'Obróć element w lewo');
+      rotLeftBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8.8 6.5H5.5V3.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><path d="M5.5 11.5a6.5 6.5 0 1 1 1.9 4.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
 
-      const scaleInc = document.createElement('button');
-      scaleInc.type = 'button';
-      scaleInc.className = 'stb-scale-btn stb-scale-btn--up';
-      scaleInc.setAttribute('aria-label', 'Powiększ element');
-      scaleInc.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"></circle><line x1="10.5" y1="8.2" x2="10.5" y2="12.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></line><line x1="8.2" y1="10.5" x2="12.8" y2="10.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></line><line x1="14.8" y1="14.8" x2="19.2" y2="19.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></line></svg>';
+      const rotRightBtn = document.createElement('button');
+      rotRightBtn.type = 'button';
+      rotRightBtn.className = 'stb-handle-btn stb-handle-btn--rot-right';
+      rotRightBtn.setAttribute('aria-label', 'Obróć element w prawo');
+      rotRightBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15.2 6.5h3.3V3.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path><path d="M18.5 11.5a6.5 6.5 0 1 0-1.9 4.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
 
-      scaleRow.appendChild(scaleDec);
-      scaleRow.appendChild(scaleValue);
-      scaleRow.appendChild(scaleInc);
+      pad.appendChild(zoomOutBtn);
+      pad.appendChild(zoomInBtn);
+      pad.appendChild(rotLeftBtn);
+      pad.appendChild(rotRightBtn);
 
-      panel.appendChild(rotateBtn);
-      panel.appendChild(scaleRow);
+      panel.appendChild(pad);
       layer.appendChild(panel);
       canvasBox.appendChild(layer);
 
       handleState.layer = layer;
       handleState.panel = panel;
-      handleState.rotateBtn = rotateBtn;
-      handleState.scaleDec = scaleDec;
-      handleState.scaleInc = scaleInc;
-      handleState.scaleValue = scaleValue;
+      handleState.btnZoomOut = zoomOutBtn;
+      handleState.btnZoomIn = zoomInBtn;
+      handleState.btnRotLeft = rotLeftBtn;
+      handleState.btnRotRight = rotRightBtn;
     }
 
     ensureHandleUI();
@@ -1177,12 +1178,7 @@
       }
 
       panel.dataset.target = target;
-      const scaleVal = Math.max(0.1, Math.min(6, targetScale(target) || 1));
-      if (handleState.scaleValue){
-        handleState.scaleValue.textContent = Math.round(scaleVal * 100) + '%';
-      }
-
-      panel.style.display = 'flex';
+      panel.style.display = 'block';
       const rect = canvasRect();
       if (!rect || !rect.width || !rect.height){
         panel.style.display = 'none';
@@ -1204,58 +1200,6 @@
       panel.style.top = top + 'px';
     }
 
-    function handleRotateStart(evt){
-      ensureHandleUI();
-      if (!handleState.rotateBtn) return;
-      const target = activeTarget();
-      const box = targetBoundingBox(target);
-      if (!target || !box) return;
-      const pos = getPos(evt);
-      const cv = toCanvasXY(pos);
-      const startAngle = Math.atan2(cv.y - box.cy, cv.x - box.cx);
-      if (!isFinite(startAngle)) return;
-      handleState.rotateDrag = {
-        target,
-        cx: box.cx,
-        cy: box.cy,
-        startRot: targetRotation(target),
-        pointerStart: startAngle
-      };
-      setToolTarget(target);
-      window.addEventListener('mousemove', handleRotateMove, { passive:false });
-      window.addEventListener('touchmove', handleRotateMove, { passive:false });
-      window.addEventListener('mouseup', handleRotateEnd, { passive:false });
-      window.addEventListener('touchend', handleRotateEnd, { passive:false });
-      window.addEventListener('touchcancel', handleRotateEnd, { passive:false });
-      evt.preventDefault();
-      evt.stopPropagation();
-    }
-
-    function handleRotateMove(evt){
-      if (!handleState.rotateDrag) return;
-      const drag = handleState.rotateDrag;
-      const pos = getPos(evt);
-      const cv = toCanvasXY(pos);
-      const angle = Math.atan2(cv.y - drag.cy, cv.x - drag.cx);
-      if (!isFinite(angle)) return;
-      let deg = ((angle - drag.pointerStart) * 180/Math.PI) + drag.startRot;
-      if (!isFinite(deg)) deg = drag.startRot;
-      setTargetRotation(drag.target, deg);
-      requestDraw();
-      updateHandles();
-      evt.preventDefault();
-    }
-
-    function handleRotateEnd(){
-      handleState.rotateDrag = null;
-      window.removeEventListener('mousemove', handleRotateMove);
-      window.removeEventListener('touchmove', handleRotateMove);
-      window.removeEventListener('mouseup', handleRotateEnd);
-      window.removeEventListener('touchend', handleRotateEnd);
-      window.removeEventListener('touchcancel', handleRotateEnd);
-      updateHandles();
-    }
-
     function adjustHandleScale(direction){
       const target = activeTarget();
       if (!target) return;
@@ -1267,22 +1211,33 @@
       next = Math.round(next * 100) / 100;
       setToolTarget(target);
       setTargetScale(target, next);
-      if (handleState.scaleValue){
-        handleState.scaleValue.textContent = Math.round(next * 100) + '%';
-      }
       requestDraw();
       updateHandles();
     }
 
-    if (handleState.rotateBtn){
-      handleState.rotateBtn.addEventListener('mousedown', handleRotateStart);
-      handleState.rotateBtn.addEventListener('touchstart', handleRotateStart, { passive:false });
+    function adjustHandleRotation(stepDeg){
+      const target = activeTarget();
+      if (!target) return;
+      const current = targetRotation(target) || 0;
+      let next = current + stepDeg;
+      if (!isFinite(next)) next = current;
+      setToolTarget(target);
+      setTargetRotation(target, next);
+      requestDraw();
+      updateHandles();
     }
-    if (handleState.scaleDec){
-      handleState.scaleDec.addEventListener('click', ()=> adjustHandleScale(-1));
+
+    if (handleState.btnZoomOut){
+      handleState.btnZoomOut.addEventListener('click', ()=> adjustHandleScale(-1));
     }
-    if (handleState.scaleInc){
-      handleState.scaleInc.addEventListener('click', ()=> adjustHandleScale(1));
+    if (handleState.btnZoomIn){
+      handleState.btnZoomIn.addEventListener('click', ()=> adjustHandleScale(1));
+    }
+    if (handleState.btnRotLeft){
+      handleState.btnRotLeft.addEventListener('click', ()=> adjustHandleRotation(-5));
+    }
+    if (handleState.btnRotRight){
+      handleState.btnRotRight.addEventListener('click', ()=> adjustHandleRotation(5));
     }
 
     window.addEventListener('resize', updateHandles);
