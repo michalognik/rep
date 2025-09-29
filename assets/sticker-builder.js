@@ -368,21 +368,32 @@
         const body = $('.acc__body', item);
         if (!head || !body) return;
 
-        if (head.getAttribute('aria-expanded') !== 'true') body.setAttribute('hidden','');
+        if (head.getAttribute('aria-expanded') === 'true'){
+          body.removeAttribute('hidden');
+          item.classList.add('is-active');
+        } else {
+          body.setAttribute('hidden','');
+          item.classList.remove('is-active');
+        }
 
         head.addEventListener('click', ()=>{
           const isOpen = head.getAttribute('aria-expanded') === 'true';
           $$('.stb-controls.acc .acc__item').forEach(other=>{
             const h=$('.acc__head',other), b=$('.acc__body',other);
+            if (!h || !b) return;
             if (other===item){ return; }
-            if (h&&b){ h.setAttribute('aria-expanded','false'); b.setAttribute('hidden',''); }
+            h.setAttribute('aria-expanded','false');
+            b.setAttribute('hidden','');
+            other.classList.remove('is-active');
           });
           if (isOpen){
             head.setAttribute('aria-expanded','false');
             body.setAttribute('hidden','');
+            item.classList.remove('is-active');
           } else {
             head.setAttribute('aria-expanded','true');
             body.removeAttribute('hidden');
+            item.classList.add('is-active');
             if (container && typeof head.scrollIntoView === 'function'){
               head.scrollIntoView({ block:'nearest', inline:'nearest', behavior:'smooth' });
             }
@@ -1710,30 +1721,63 @@
     }
 
     // popup do wyceny
+    function hideQuotePopup(){
+      const modal = byId('stb-quote-popup');
+      if (!modal) return;
+      modal.classList.remove('is-visible');
+      modal.setAttribute('aria-hidden', 'true');
+      if (modal.__escHandler){
+        document.removeEventListener('keydown', modal.__escHandler);
+        modal.__escHandler = null;
+      }
+    }
+
     function ensureQuotePopup(){
       let modal = byId('stb-quote-popup');
       if (modal) return modal;
       modal = document.createElement('div');
       modal.id = 'stb-quote-popup';
-      modal.style.cssText = 'position:fixed;inset:0;z-index:9999999;display:none;';
+      modal.className = 'stb-quote-popup';
+      modal.setAttribute('aria-hidden', 'true');
       modal.innerHTML = `
-        <div style="position:absolute;inset:0;background:rgba(0,0,0,.6)"></div>
-        <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;max-width:520px;width:92%;padding:16px;border:1px solid #e5eaf5">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <strong style="font-size:18px">WYCENA INDYWIDUALNA</strong>
-            <button type="button" id="stb-quote-close" class="btn" style="border-radius:999px">✕</button>
+        <div class="stb-quote-popup__backdrop" data-quote-close></div>
+        <div class="stb-quote-popup__dialog" role="dialog" aria-modal="true" aria-labelledby="stb-quote-title" tabindex="-1">
+          <div class="stb-quote-popup__header">
+            <h2 id="stb-quote-title" class="stb-quote-popup__title">Wycena indywidualna</h2>
+            <button type="button" class="btn btn-icon stb-quote-popup__close" data-quote-close aria-label="Zamknij okno">
+              <span aria-hidden="true">✕</span>
+            </button>
           </div>
-          <p>Powierzchnia naklejek przekracza 100 m². Napisz do nas, a przygotujemy ofertę.</p>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <div class="stb-quote-popup__body">
+            <p>Powierzchnia naklejek przekracza 100 m². Napisz do nas, a przygotujemy ofertę.</p>
+          </div>
+          <div class="stb-quote-popup__actions">
             <a class="btn btn-primary" href="/kontakt/">Przejdź do kontaktu</a>
-            <button class="btn" type="button" id="stb-quote-stay">Zostań w kreatorze</button>
+            <button class="btn" type="button" data-quote-close>Zostań w kreatorze</button>
           </div>
         </div>`;
       document.body.appendChild(modal);
-      modal.addEventListener('click', (e)=>{ if (e.target===modal.firstElementChild) modal.style.display='none'; });
-      $('#stb-quote-close', modal)?.addEventListener('click', ()=> modal.style.display='none');
-      $('#stb-quote-stay', modal)?.addEventListener('click', ()=> modal.style.display='none');
+      const closeEls = modal.querySelectorAll('[data-quote-close]');
+      closeEls.forEach((el)=>{
+        el.addEventListener('click', (ev)=>{
+          ev.preventDefault();
+          hideQuotePopup();
+        });
+      });
       return modal;
+    }
+
+    function showQuotePopup(){
+      const modal = ensureQuotePopup();
+      if (!modal) return;
+      modal.classList.add('is-visible');
+      modal.setAttribute('aria-hidden', 'false');
+      const dialog = modal.querySelector('.stb-quote-popup__dialog');
+      if (dialog){ dialog.focus(); }
+      if (!modal.__escHandler){
+        modal.__escHandler = (ev)=>{ if (ev.key === 'Escape'){ hideQuotePopup(); } };
+      }
+      document.addEventListener('keydown', modal.__escHandler);
     }
 
     function updatePriceAndJSON(){
@@ -1760,8 +1804,9 @@
 
       // Popup jeśli >= 100 m2
       if (calc.total_area >= 100){
-        const m = ensureQuotePopup();
-        if (m) m.style.display = 'block';
+        showQuotePopup();
+      } else {
+        hideQuotePopup();
       }
 
       // Payload do Woo (w PLN)
