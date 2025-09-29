@@ -105,6 +105,7 @@
 
     // Materiał
     const materialEl = byId('stb-material');
+    const materialGridEl = byId('stb-material-grid');
     const laminateEl = byId('stb-laminate');
 
     // Rozmiary / ilość / cena
@@ -1464,12 +1465,143 @@
     updateShapeUI();
 
     /* ===== Materiał ===== */
+    const normalizeMaterialOption = (opt, idx) => {
+      if (!opt) return null;
+      const rawValue = (opt.value || opt.label || '').trim();
+      const rawLabel = (opt.label || opt.value || '').trim();
+      if (!rawValue || !rawLabel) return null;
+      const idBase = opt.id || rawValue.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      const id = idBase ? `stb-material-${idBase}` : `stb-material-${idx || 0}`;
+      return {
+        id,
+        value: rawValue,
+        label: rawLabel,
+        note: opt.note || opt.subtitle || opt.subLabel || '',
+        image: opt.image || opt.src || '',
+        shortLabel: opt.shortLabel || opt.short || ''
+      };
+    };
+
+    const defaultMaterialOptions = [
+      { id:'foil-economy', value:'Folia ekonomiczna', label:'Folia ekonomiczna', note:'Monomeryczna' },
+      { id:'foil-longlife', value:'Folia długowieczna', label:'Folia długowieczna', note:'Polimerowa' },
+      { id:'foil-transparent', value:'Folia transparentna', label:'Folia transparentna', note:'' },
+      { id:'foil-whiteback', value:'Folia transparentna z białym podkładem', label:'Folia transparentna z białym podkładem', shortLabel:'Folia transparentna', note:'Z białym podkładem' },
+      { id:'foil-matte', value:'Folia matowa', label:'Folia matowa', note:'' },
+      { id:'foil-glossy', value:'Folia błyszcząca', label:'Folia błyszcząca', note:'' },
+      { id:'foil-metallic', value:'Folia metaliczna', label:'Folia metaliczna', note:'' },
+      { id:'foil-gold', value:'Folia złota', label:'Folia złota', note:'' },
+      { id:'foil-silver', value:'Folia srebrna', label:'Folia srebrna', note:'' },
+      { id:'foil-holo', value:'Folia holograficzna', label:'Folia holograficzna', note:'' },
+      { id:'foil-reflective', value:'Folia odblaskowa', label:'Folia odblaskowa', note:'' },
+      { id:'foil-fluo', value:'Folia fluorescencyjna', label:'Folia fluorescencyjna', note:'' }
+    ];
+
+    const materialOptions = (() => {
+      if (Array.isArray(window.STB_MATERIAL_OPTIONS) && window.STB_MATERIAL_OPTIONS.length){
+        return window.STB_MATERIAL_OPTIONS
+          .map((opt, idx) => normalizeMaterialOption(opt, idx))
+          .filter(Boolean);
+      }
+      return defaultMaterialOptions.map((opt, idx) => normalizeMaterialOption(opt, idx)).filter(Boolean);
+    })();
+
+    if (materialEl && materialOptions.length){
+      const currentValue = (materialEl.value || '').trim();
+      const hasCurrent = currentValue && materialOptions.some(opt => opt.value === currentValue);
+      if (!hasCurrent && currentValue){
+        const fallbackOption = normalizeMaterialOption({ value: currentValue, label: currentValue }, 'current');
+        if (fallbackOption) materialOptions.unshift(fallbackOption);
+      }
+      if (!materialEl.value){
+        materialEl.value = materialOptions[0].value;
+      }
+    }
+
+    const materialTiles = [];
+
+    const updateMaterialTiles = (value) => {
+      const target = (value || '').toLowerCase();
+      let activeId = null;
+      materialTiles.forEach(({ option, el }) => {
+        const isActive = option.value.toLowerCase() === target;
+        el.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        if (isActive) activeId = el.id;
+      });
+      if (materialGridEl){
+        if (activeId) materialGridEl.setAttribute('aria-activedescendant', activeId);
+        else materialGridEl.removeAttribute('aria-activedescendant');
+      }
+    };
+
+    const setMaterialValue = (value, { triggerChange = true } = {}) => {
+      if (!materialEl) return;
+      if (materialEl.value !== value){
+        materialEl.value = value;
+      }
+      updateMaterialTiles(value);
+      if (triggerChange){
+        materialEl.dispatchEvent(new Event('change', { bubbles:true }));
+      }
+    };
+
+    if (materialGridEl && materialOptions.length){
+      materialGridEl.setAttribute('aria-multiselectable', 'false');
+      materialGridEl.innerHTML = '';
+      materialOptions.forEach((option, index) => {
+        if (!option) return;
+        const tile = document.createElement('button');
+        tile.type = 'button';
+        tile.className = 'material-tile';
+        tile.id = option.id || `stb-material-${index}`;
+        tile.dataset.value = option.value;
+        tile.setAttribute('role', 'option');
+        tile.setAttribute('aria-pressed', 'false');
+        tile.setAttribute('aria-selected', 'false');
+        tile.setAttribute('aria-label', option.label);
+        tile.dataset.image = option.image || '';
+        if (option.image){
+          tile.style.setProperty('--material-image', `url("${option.image}")`);
+        }
+
+        const image = document.createElement('span');
+        image.className = 'material-tile__image';
+        tile.appendChild(image);
+
+        const caption = document.createElement('span');
+        caption.className = 'material-tile__name';
+        const primaryText = option.shortLabel || option.label;
+        const strongLine = document.createElement('strong');
+        strongLine.textContent = primaryText;
+        caption.appendChild(strongLine);
+        if (option.note){
+          const noteLine = document.createElement('small');
+          noteLine.textContent = option.note;
+          caption.appendChild(noteLine);
+        }
+        tile.title = option.note ? `${option.label} — ${option.note}` : option.label;
+        tile.appendChild(caption);
+
+        tile.addEventListener('click', () => setMaterialValue(option.value));
+
+        materialTiles.push({ option, el: tile });
+        materialGridEl.appendChild(tile);
+      });
+      updateMaterialTiles(materialEl ? materialEl.value : '');
+    }
+
     function materialMultiplier(){
       const v = (materialEl && (materialEl.value||'')).toLowerCase();
       if (v.indexOf('długo') !== -1 || v.indexOf('dlugo') !== -1) return 1.5; // folia długowieczna
       return 1.0; // ekonomiczna lub inne
     }
-    if (materialEl) materialEl.addEventListener('change', ()=>{ updatePriceAndJSON(); refreshQtyPrices(); updateSummaryMeta(); });
+    if (materialEl) materialEl.addEventListener('change', ()=>{
+      updateMaterialTiles(materialEl.value);
+      updatePriceAndJSON();
+      refreshQtyPrices();
+      updateSummaryMeta();
+    });
     if (laminateEl) laminateEl.addEventListener('change', ()=>{ updatePriceAndJSON(); refreshQtyPrices(); updateSummaryMeta(); requestDraw(); });
 
     /* ===== Tekst ===== */

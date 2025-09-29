@@ -239,19 +239,19 @@ if ( ! defined( 'ABSPATH' ) ) {
                     <div class="acc__item" id="acc-material">
                         <button type="button" class="acc__head" aria-expanded="false">Materiał</button>
                         <div class="acc__body" hidden>
-                            <div class="stb-row">
-                                <label class="stb-field" style="flex:1 1 auto;">
-                                    <span class="stb-lbl">Rodzaj folii</span>
-                                    <select id="stb-material">
-                                        <option value="Folia ekonomiczna">Folia ekonomiczna (monomeryczna)</option>
-                                        <option value="Folia długowieczna">Folia długowieczna (polimerowa)</option>
-                                    </select>
-                                </label>
+                            <div class="stb-row stb-material-row">
+                                <div class="stb-material-grid-col">
+                                    <span class="stb-lbl" id="stb-material-grid-label">Rodzaj folii</span>
+                                    <div class="stb-material-grid-scroll" role="presentation">
+                                        <div class="stb-material-grid" id="stb-material-grid" role="listbox" aria-labelledby="stb-material-grid-label"></div>
+                                    </div>
+                                </div>
                                 <label class="stb-inline" style="margin-top:6px; gap:6px;">
                                     <input type="checkbox" id="stb-laminate">
                                     <span>Laminat ochronny</span>
                                 </label>
                             </div>
+                            <input type="hidden" id="stb-material" value="Folia ekonomiczna">
                         </div>
                     </div>
 
