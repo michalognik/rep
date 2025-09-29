@@ -36,6 +36,14 @@
 #stb-root .opt-price{ font-size:.86rem; color:var(--price-blue); font-weight:400 }
 #stb-root .opt-save{ font-size:.78rem; color:var(--accent) !important; opacity:1; font-weight:600 }
 
+#stb-root .stb-grid-page .order-col .opt-list{ gap:4px }
+#stb-root .stb-grid-page .order-col .opt-item{ padding:6px 8px }
+#stb-root .stb-grid-page .order-col .opt-line{ gap:6px }
+#stb-root .stb-grid-page .order-col .opt-main{ font-size:.82rem }
+#stb-root .stb-grid-page .order-col .opt-price{ font-size:.74rem }
+#stb-root .stb-grid-page .order-col .opt-save{ font-size:.68rem }
+#stb-root .stb-grid-page .order-col .opt-toggle{ padding:6px 10px; font-size:.84rem }
+
 #stb-root .opt-toggle{
   margin-top:6px; display:inline-flex; align-items:center; gap:8px;
   padding:7px 10px; border:1px dashed var(--line); border-radius:999px; background:#fff; cursor:pointer; font-weight:700; font-size:.9rem;
