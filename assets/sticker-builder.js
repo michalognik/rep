@@ -125,6 +125,7 @@
     const totalNetOut = byId('stb-total-net');
     const totalSaveOut= byId('stb-total-save');
     const totalLeadOut= byId('stb-total-lead');
+    const priceTimerEl= byId('stb-price-timer');
     const addBtn      = byId('stb-add');
 
     const step1       = byId('stb-step-1');
@@ -188,6 +189,10 @@
     const sumLaminateEl = byId('sum-laminate');
     const sumLeadtimeEl = byId('sum-leadtime');
 
+    const PRICE_TIMER_DURATION = 15 * 60 * 1000; // 15 minut
+    let priceTimerDeadline = null;
+    let priceTimerInterval = null;
+
     /* ===== Kroki ===== */
     const steps = [step1, step2];
     let currentStep = step1 ? 1 : 0;
@@ -233,6 +238,10 @@
     }
 
     showStep(currentStep || 1);
+
+    if (priceTimerEl){
+      window.addEventListener('beforeunload', stopPriceTimer, { once:true });
+    }
 
     // Tekst
     const textInput     = byId('stb-text-input');
@@ -1891,6 +1900,53 @@
       }
     }
 
+    function formatPLTimeOnly(dt){
+      try{
+        return dt.toLocaleTimeString('pl-PL', { hour:'2-digit', minute:'2-digit' });
+      }catch(e){
+        const h = dt.getHours().toString().padStart(2, '0');
+        const m = dt.getMinutes().toString().padStart(2, '0');
+        return h + ':' + m;
+      }
+    }
+
+    function updatePriceTimerDisplay(){
+      if (!priceTimerEl) return;
+      if (!priceTimerDeadline){
+        priceTimerDeadline = Date.now() + PRICE_TIMER_DURATION;
+      }
+      const now = Date.now();
+      let remaining = priceTimerDeadline - now;
+      if (remaining <= 0){
+        priceTimerDeadline = now + PRICE_TIMER_DURATION;
+        remaining = priceTimerDeadline - now;
+      }
+      const totalSeconds = Math.max(0, Math.floor(remaining / 1000));
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      const countdown = minutes.toString().padStart(2, '0') + ':' + seconds.toString().padStart(2, '0');
+      const current = new Date();
+      const dateStr = formatPLDateOnly(current);
+      const timeStr = formatPLTimeOnly(current);
+      priceTimerEl.textContent = 'Aktualne przez ' + countdown + ' • ' + dateStr + ', ' + timeStr;
+    }
+
+    function restartPriceTimer(){
+      if (!priceTimerEl) return;
+      priceTimerDeadline = Date.now() + PRICE_TIMER_DURATION;
+      updatePriceTimerDisplay();
+      if (!priceTimerInterval){
+        priceTimerInterval = window.setInterval(updatePriceTimerDisplay, 1000);
+      }
+    }
+
+    function stopPriceTimer(){
+      if (priceTimerInterval){
+        window.clearInterval(priceTimerInterval);
+        priceTimerInterval = null;
+      }
+    }
+
     function updateSummaryMeta(calc){
       if (sumShapeEl)    sumShapeEl.textContent = 'Kształt: ' + shapeLabel(shape);
       if (sumMaterialEl) sumMaterialEl.textContent = 'Materiał: ' + (materialEl?.value || 'Folia ekonomiczna');
@@ -1986,6 +2042,7 @@
       if (sumNet)   sumNet.textContent  = (calc.total_area >= 100 ? '' : (fmtMoney(calc.net) + ' netto'));
 
       updateSummaryMeta(calc);
+      restartPriceTimer();
 
       // Popup jeśli >= 100 m2
       if (calc.total_area >= 100){

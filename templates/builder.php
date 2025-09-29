@@ -139,6 +139,7 @@ if ( ! defined( 'ABSPATH' ) ) {
                         <button type="button" class="btn btn-primary btn-step" id="stb-open-modal">Stwórz w kreatorze</button>
                     </div>
                     <p class="step-file-info" id="stb-upload-summary">Brak pliku</p>
+                    <p class="price-timer" id="stb-price-timer" aria-live="polite"></p>
                     <div class="price-box">
                         <div class="total-val" id="stb-total">0,00 zł</div>
                         <div class="total-net" id="stb-total-net">Netto: 0,00 zł</div>
