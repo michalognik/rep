@@ -158,7 +158,11 @@
 }
 .stb-modal[aria-hidden="false"]{ display:block }
 .stb-modal__backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.65) }
-.stb-modal__content{ position:absolute; inset:0; display:grid; grid-template-rows:auto 1fr; background:#fff }
+.stb-modal__content{
+  position:absolute; inset:0; display:grid; grid-template-rows:auto 1fr;
+  background:#fff; overflow:auto; -webkit-overflow-scrolling:touch;
+  overscroll-behavior-y:contain;
+}
 .stb-modal__close{ position:absolute; top:12px; right:12px; z-index:2; border-color:var(--line) !important }
 body.stb-lock{ overflow:hidden }
 
@@ -193,7 +197,7 @@ body.stb-lock{ overflow:hidden }
 .stb-modal textarea{ height:auto !important }
 
 /* layout modala */
-.stb-modal .designer{ margin:0; height:100%; border:none; border-radius:0; background:#fff; padding:16px }
+.stb-modal .designer{ margin:0; height:100%; border:none; border-radius:0; background:#fff; padding:16px; min-height:0 }
 .stb-modal .designer .stb-two{
   display:grid !important; grid-template-areas:"left right" !important;
   grid-template-columns:420px 1fr !important; gap:16px !important; height:100% !important; min-height:0 !important;
@@ -218,7 +222,7 @@ body.stb-lock{ overflow:hidden }
 }
 
 @media (max-width:900px){
-  .stb-modal .designer{ padding:14px 12px; }
+  .stb-modal .designer{ padding:14px 12px; height:auto; min-height:100%; }
   .stb-modal .designer .stb-two{
     grid-template-areas:"right" "left" !important;
     grid-template-columns:1fr !important;
