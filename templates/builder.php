@@ -5,139 +5,153 @@ if ( ! defined( 'ABSPATH' ) ) {
 ?>
 <div id="stb-root">
     <div class="stb-wrap">
-        <div class="stb-card stb-grid-page">
-            <div class="order-col">
-
-                <section class="list-section">
-                    <span class="label">Rozmiar naklejki</span>
-                    <div id="sizeList" class="opt-list">
-                        <button type="button" class="opt-item" data-w="5" data-h="5" aria-pressed="false">
-                            <div class="opt-line">
-                                <span class="opt-main">5 &times; 5 cm</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
-                            </div>
-                        </button>
-                        <button type="button" class="opt-item" data-w="10" data-h="10" aria-pressed="true">
-                            <div class="opt-line">
-                                <span class="opt-main">10 &times; 10 cm</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
-                            </div>
-                        </button>
-                        <button type="button" class="opt-item" data-w="15" data-h="10" aria-pressed="false">
-                            <div class="opt-line">
-                                <span class="opt-main">15 &times; 10 cm</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
-                            </div>
-                        </button>
-                    </div>
-                    <button type="button" id="sizeCustomToggle" class="opt-toggle">Własny rozmiar</button>
-                    <div id="sizeCustom" class="opt-custom is-hidden">
-                        <div class="stb-inline">
-                            <label class="stb-field">
-                                <span class="stb-lbl">Szerokość (cm)</span>
-                                <input type="number" id="stb-w" min="1" step="0.1" value="10">
-                            </label>
-                            <label class="stb-field">
-                                <span class="stb-lbl">Wysokość (cm)</span>
-                                <input type="number" id="stb-h" min="1" step="0.1" value="10">
-                            </label>
+        <div class="stb-steps">
+            <div class="stb-card stb-step is-active" id="stb-step-1" aria-hidden="false">
+                <div class="order-col">
+                    <section class="list-section">
+                        <span class="label">Rozmiar naklejki</span>
+                        <div id="sizeList" class="opt-list">
+                            <button type="button" class="opt-item" data-w="5" data-h="5" aria-pressed="false">
+                                <div class="opt-line">
+                                    <span class="opt-main">5 &times; 5 cm</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
+                            <button type="button" class="opt-item" data-w="10" data-h="10" aria-pressed="true">
+                                <div class="opt-line">
+                                    <span class="opt-main">10 &times; 10 cm</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
+                            <button type="button" class="opt-item" data-w="15" data-h="10" aria-pressed="false">
+                                <div class="opt-line">
+                                    <span class="opt-main">15 &times; 10 cm</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
                         </div>
-                    </div>
-                </section>
-
-                <section class="list-section">
-                    <span class="label">Nakład</span>
-                    <div id="qtyList" class="opt-list">
-                        <button type="button" class="opt-item" data-qty="10" aria-pressed="false">
-                            <div class="opt-line">
-                                <span class="opt-main">10 sztuk</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
+                        <button type="button" id="sizeCustomToggle" class="opt-toggle">Własny rozmiar</button>
+                        <div id="sizeCustom" class="opt-custom is-hidden">
+                            <div class="stb-inline">
+                                <label class="stb-field">
+                                    <span class="stb-lbl">Szerokość (cm)</span>
+                                    <input type="number" id="stb-w" min="1" step="0.1" value="10">
+                                </label>
+                                <label class="stb-field">
+                                    <span class="stb-lbl">Wysokość (cm)</span>
+                                    <input type="number" id="stb-h" min="1" step="0.1" value="10">
+                                </label>
                             </div>
-                        </button>
-                        <button type="button" class="opt-item" data-qty="50" aria-pressed="false">
-                            <div class="opt-line">
-                                <span class="opt-main">50 sztuk</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
-                            </div>
-                        </button>
-                        <button type="button" class="opt-item" data-qty="100" aria-pressed="true">
-                            <div class="opt-line">
-                                <span class="opt-main">100 sztuk</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
-                            </div>
-                        </button>
-                        <button type="button" class="opt-item" data-qty="200" aria-pressed="false">
-                            <div class="opt-line">
-                                <span class="opt-main">200 sztuk</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
-                            </div>
-                        </button>
-                        <button type="button" class="opt-item" data-qty="1000" aria-pressed="false">
-                            <div class="opt-line">
-                                <span class="opt-main">1000 sztuk</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
-                            </div>
-                        </button>
-                        <button type="button" class="opt-item" data-qty="3000" aria-pressed="false">
-                            <div class="opt-line">
-                                <span class="opt-main">3000 sztuk</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
-                            </div>
-                        </button>
-                    </div>
-                    <button type="button" id="qtyCustomToggle" class="opt-toggle">Własny nakład</button>
-                    <div id="qtyCustom" class="opt-custom is-hidden">
-                        <div class="stb-inline">
-                            <label class="stb-field">
-                                <span class="stb-lbl">Ilość (szt.)</span>
-                                <input type="number" id="stb-qty" min="1" step="1" value="100">
-                            </label>
-                            <span id="qtyCustomSave" class="opt-save"></span>
                         </div>
-                    </div>
-                </section>
+                    </section>
 
-            </div>
-
-            <div class="price-col price-in-order">
-                <div class="price-box">
-                    <div class="total-val" id="stb-total">0,00 zł</div>
-                    <div class="total-net" id="stb-total-net">Netto: 0,00 zł</div>
-                    <div class="total-save" id="stb-total-save" aria-live="polite"></div>
-                    <div class="total-lead" id="stb-total-lead" aria-live="polite"></div>
+                    <section class="list-section">
+                        <span class="label">Nakład</span>
+                        <div id="qtyList" class="opt-list">
+                            <button type="button" class="opt-item" data-qty="10" aria-pressed="false">
+                                <div class="opt-line">
+                                    <span class="opt-main">10 sztuk</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
+                            <button type="button" class="opt-item" data-qty="50" aria-pressed="false">
+                                <div class="opt-line">
+                                    <span class="opt-main">50 sztuk</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
+                            <button type="button" class="opt-item" data-qty="100" aria-pressed="true">
+                                <div class="opt-line">
+                                    <span class="opt-main">100 sztuk</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
+                            <button type="button" class="opt-item" data-qty="200" aria-pressed="false">
+                                <div class="opt-line">
+                                    <span class="opt-main">200 sztuk</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
+                            <button type="button" class="opt-item" data-qty="1000" aria-pressed="false">
+                                <div class="opt-line">
+                                    <span class="opt-main">1000 sztuk</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
+                            <button type="button" class="opt-item" data-qty="3000" aria-pressed="false">
+                                <div class="opt-line">
+                                    <span class="opt-main">3000 sztuk</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
+                        </div>
+                        <button type="button" id="qtyCustomToggle" class="opt-toggle">Własny nakład</button>
+                        <div id="qtyCustom" class="opt-custom is-hidden">
+                            <div class="stb-inline">
+                                <label class="stb-field">
+                                    <span class="stb-lbl">Ilość (szt.)</span>
+                                    <input type="number" id="stb-qty" min="1" step="1" value="100">
+                                </label>
+                                <span id="qtyCustomSave" class="opt-save"></span>
+                            </div>
+                        </div>
+                    </section>
                 </div>
-                <div class="cta">
-                    <button type="button" class="btn" id="stb-open-modal">Otwórz kreator</button>
-                    <button type="button" class="btn btn-primary" id="stb-add">Dodaj do koszyka</button>
+                <div class="step-footer">
+                    <button type="button" class="btn btn-primary" id="stb-step1-next">Dalej</button>
                 </div>
             </div>
+
+            <div class="stb-card stb-step" id="stb-step-2" aria-hidden="true">
+                <div class="step-content">
+                    <header class="step-header">
+                        <h2 class="step-title">Projekt naklejki</h2>
+                        <p class="step-subtitle">Wybierz sposób przygotowania projektu</p>
+                    </header>
+                    <div class="step-options">
+                        <button type="button" class="btn" id="stb-upload-trigger">Wgraj własny</button>
+                        <button type="button" class="btn btn-primary" id="stb-open-modal">Stwórz w kreatorze</button>
+                    </div>
+                    <p class="step-file-info" id="stb-upload-summary">Brak pliku</p>
+                    <div class="price-box">
+                        <div class="total-val" id="stb-total">0,00 zł</div>
+                        <div class="total-net" id="stb-total-net">Netto: 0,00 zł</div>
+                        <div class="total-save" id="stb-total-save" aria-live="polite"></div>
+                        <div class="total-lead" id="stb-total-lead" aria-live="polite"></div>
+                    </div>
+                    <div class="cta">
+                        <button type="button" class="btn btn-primary" id="stb-add">Dalej</button>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         <div class="designer stb-card">
@@ -456,47 +470,6 @@ if ( ! defined( 'ABSPATH' ) ) {
                     </div>
                     <div class="canvas-box">
                         <canvas id="stb-canvas" width="520" height="520" aria-label="Podgląd naklejki"></canvas>
-                    </div>
-                    <div class="stb-mini-summary">
-                        <div class="sum-left">
-                            <div class="sum-section">
-                                <button type="button" class="sum-link" id="sum-dims">Wymiary: <strong>10 &times; 10 cm</strong></button>
-                                <div id="sum-edit-size" class="sum-edit is-hidden">
-                                    <div class="stb-inline">
-                                        <label class="stb-field">
-                                            <span class="stb-lbl">Szerokość (cm)</span>
-                                            <input type="number" id="sum-w" min="1" step="0.1" value="10">
-                                        </label>
-                                        <label class="stb-field">
-                                            <span class="stb-lbl">Wysokość (cm)</span>
-                                            <input type="number" id="sum-h" min="1" step="0.1" value="10">
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="sum-section">
-                                <button type="button" class="sum-link" id="sum-qty">Nakład: <strong>100 szt.</strong></button>
-                                <div id="sum-edit-qty" class="sum-edit is-hidden">
-                                    <label class="stb-field">
-                                        <span class="stb-lbl">Ilość (szt.)</span>
-                                        <input type="number" id="sum-qty-inp" min="1" step="1" value="100">
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="sum-meta">
-                                <span id="sum-shape">Kształt: Prostokąt</span>
-                                <span id="sum-material">Materiał: Folia ekonomiczna</span>
-                                <span id="sum-laminate">Laminat: nie</span>
-                                <span id="sum-leadtime">Wysyłka: wkrótce</span>
-                            </div>
-                        </div>
-                        <div class="sum-right">
-                            <div class="sum-total" id="sum-total">0,00 zł</div>
-                            <div class="sum-net" id="sum-net">Netto: 0,00 zł</div>
-                        </div>
-                        <div class="sum-cta">
-                            <button type="button" class="btn btn-primary" id="stb-add-modal">Dodaj do koszyka</button>
-                        </div>
                     </div>
                 </div>
             </div>

@@ -17,6 +17,36 @@
 #stb-root .stb-wrap{ max-width:1000px; margin:10px auto; padding:0 12px }
 #stb-root .stb-card{ background:var(--card); border:1px solid var(--line); border-radius:var(--radius) }
 
+#stb-root .stb-steps{ display:grid; gap:18px }
+#stb-root .stb-step{ display:none; overflow:hidden }
+#stb-root .stb-step.is-active{ display:flex; flex-direction:column }
+#stb-root .stb-step .step-footer{ background:#fff; padding:0 24px 24px; display:flex; justify-content:flex-end; border-top:1px solid var(--line) }
+#stb-root #stb-step-1 .order-col{ padding:24px; gap:18px; border-bottom:1px solid var(--line) }
+#stb-root #stb-step-1 .step-footer{ padding:0 24px 24px }
+#stb-root #stb-step-2 .step-content{ display:grid; gap:20px; padding:24px }
+#stb-root #stb-step-2 .step-header{ display:grid; gap:6px }
+#stb-root #stb-step-2 .step-title{ margin:0; font-size:1.45rem; font-weight:800 }
+#stb-root #stb-step-2 .step-subtitle{ margin:0; font-size:.95rem; color:var(--muted); font-weight:600 }
+#stb-root #stb-step-2 .step-options{ display:flex; flex-wrap:wrap; gap:12px }
+#stb-root #stb-step-2 .step-options .btn{ flex:1 1 220px; min-width:180px; justify-content:center }
+#stb-root #stb-step-2 .step-file-info{ margin:0; font-size:.85rem; color:var(--muted); font-weight:500 }
+#stb-root #stb-step-2 .price-box{ width:100%; justify-items:flex-start; align-items:flex-start }
+#stb-root #stb-step-2 .total-val,
+#stb-root #stb-step-2 .total-net,
+#stb-root #stb-step-2 .total-save,
+#stb-root #stb-step-2 .total-lead{ text-align:left }
+#stb-root #stb-step-2 .total-net{ padding-left:14px; padding-right:14px }
+#stb-root #stb-step-2 .cta{ justify-content:flex-end }
+#stb-root #stb-step-2 .price-box{ margin-top:0 }
+
+@media (max-width:640px){
+  #stb-root #stb-step-1 .order-col{ padding:18px; }
+  #stb-root .stb-step .step-footer{ padding:12px 18px 18px; }
+  #stb-root #stb-step-2 .step-content{ padding:18px; }
+  #stb-root #stb-step-2 .step-title{ font-size:1.28rem; }
+  #stb-root #stb-step-2 .step-options .btn{ flex:1 1 100%; }
+}
+
 /* ORDER (ilość + rozmiar + cena) */
 #stb-root .order-col{ padding:14px; display:grid; gap:14px; background:#fff }
 #stb-root .stb-order-grid{ display:grid; gap:14px; grid-template-columns:minmax(0, calc(50% + 50px)) minmax(0, calc(50% - 50px)); align-items:start; }
@@ -325,7 +355,8 @@
 
 /* „Wgraj plik” na niebiesko */
 #stb-upload.btn,
-.stb-modal #stb-upload.btn{ background:var(--accent) !important; border-color:var(--accent) !important; color:#fff !important }
+.stb-modal #stb-upload.btn,
+#stb-upload-trigger.btn{ background:var(--accent) !important; border-color:var(--accent) !important; color:#fff !important }
 
 /* na stronie cena obok — 2 kolumna */
 #stb-root .price-in-order{ grid-column:2; }

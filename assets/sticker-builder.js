@@ -126,7 +126,12 @@
     const totalSaveOut= byId('stb-total-save');
     const totalLeadOut= byId('stb-total-lead');
     const addBtn      = byId('stb-add');
-    const addBtnModal = byId('stb-add-modal');
+
+    const step1       = byId('stb-step-1');
+    const step2       = byId('stb-step-2');
+    const step1Next   = byId('stb-step1-next');
+    const uploadTrigger = byId('stb-upload-trigger');
+    const uploadSummary = byId('stb-upload-summary');
 
     // Toolbar
     const tbZoomOut = byId('tb-zoom-out');
@@ -182,6 +187,52 @@
     const sumMaterialEl = byId('sum-material');
     const sumLaminateEl = byId('sum-laminate');
     const sumLeadtimeEl = byId('sum-leadtime');
+
+    /* ===== Kroki ===== */
+    const steps = [step1, step2];
+    let currentStep = step1 ? 1 : 0;
+
+    function showStep(stepNumber){
+      if (!steps.length) return;
+      let targetStep = stepNumber;
+      if (!steps[stepNumber - 1]){
+        const fallbackIndex = steps.findIndex(Boolean);
+        targetStep = fallbackIndex >= 0 ? (fallbackIndex + 1) : stepNumber;
+      }
+      currentStep = targetStep;
+      steps.forEach((step, idx) => {
+        if (!step) return;
+        const isCurrent = (idx + 1) === targetStep;
+        step.classList.toggle('is-active', isCurrent);
+        step.setAttribute('aria-hidden', isCurrent ? 'false' : 'true');
+      });
+    }
+
+    function focusFirstInteractive(stepEl){
+      if (!stepEl) return;
+      const focusable = stepEl.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      if (focusable){ focusable.focus({ preventScroll:true }); }
+    }
+
+    if (step1Next && step2){
+      step1Next.addEventListener('click', ()=>{
+        updatePriceAndJSON();
+        showStep(2);
+        if (typeof step2.scrollIntoView === 'function'){
+          step2.scrollIntoView({ behavior:'smooth', block:'start' });
+        }
+        window.requestAnimationFrame(()=> focusFirstInteractive(step2));
+      });
+    }
+
+    if (uploadTrigger && upBtn){
+      uploadTrigger.addEventListener('click', (ev)=>{
+        ev.preventDefault();
+        upBtn.click();
+      });
+    }
+
+    showStep(currentStep || 1);
 
     // Tekst
     const textInput     = byId('stb-text-input');
@@ -1316,6 +1367,7 @@
       uploaded={ name:null, type:null, size:0, dataURL:null, img:null, pdf:null };
       if (imgEl) imgEl.value='';
       if (fName) fName.textContent='brak pliku';
+      if (uploadSummary) uploadSummary.textContent='Brak pliku';
       if (fMeta) fMeta.textContent='';
       transform={scale:1,offsetX:0,offsetY:0,rotDeg:0};
       if (lastToolTarget === 'image') setToolTarget(null);
@@ -1332,6 +1384,7 @@
       if (!f){ clearImage(); return; }
       const name = f.name || '';
       if (fName) fName.textContent = name;
+      if (uploadSummary) uploadSummary.textContent = name;
 
       // jeśli diecut — tylko PNG z przezroczystością
       if (shape==='diecut'){
@@ -2461,7 +2514,6 @@
       if (wooBtn){ wooBtn.click(); } else { form.submit(); }
     };
     if (addBtn)      addBtn.addEventListener('click', handleAddToCart);
-    if (addBtnModal) addBtnModal.addEventListener('click', handleAddToCart);
 
     /* ===== Modal ===== */
     const modal = byId('stb-modal');
