@@ -92,6 +92,16 @@
     const delBtn   = byId('stb-img-clear');
     const fName    = byId('stb-fname');
     const fMeta    = byId('stb-fmeta');
+    const uploadRow= byId('stb-upload-row');
+    const diecutSlot = byId('stb-diecut-slot');
+    const accImageItem = byId('acc-image');
+    let uploadPlaceholder = null;
+    if (uploadRow){
+      uploadPlaceholder = document.createElement('div');
+      uploadPlaceholder.id = 'stb-upload-placeholder';
+      uploadPlaceholder.style.display = 'none';
+      uploadRow.parentNode.insertBefore(uploadPlaceholder, uploadRow.nextSibling);
+    }
 
     // Materiał
     const materialEl = byId('stb-material');
@@ -1380,6 +1390,23 @@
     });
 
     /* ===== Kontrolki: Kształt ===== */
+    function relocateUploadRow(toDiecut){
+      if (!uploadRow || !uploadPlaceholder || !diecutSlot) return;
+      if (toDiecut){
+        diecutSlot.appendChild(uploadRow);
+        diecutSlot.removeAttribute('hidden');
+        uploadRow.classList.add('is-diecut');
+        if (accImageItem) accImageItem.setAttribute('hidden', '');
+      } else {
+        if (accImageItem) accImageItem.removeAttribute('hidden');
+        if (uploadPlaceholder.parentNode){
+          uploadPlaceholder.parentNode.insertBefore(uploadRow, uploadPlaceholder);
+        }
+        diecutSlot.setAttribute('hidden', '');
+        uploadRow.classList.remove('is-diecut');
+      }
+    }
+
     function updateShapeUI(){
       const dis = (shape==='ellipse' || shape==='circle' || shape==='diecut');
       if (cornerEl) cornerEl.disabled = dis;
@@ -1392,6 +1419,7 @@
           ? 'Tryb DIECUT: wgraj TYLKO PNG (przezroczyste tło).'
           : '';
       }
+      relocateUploadRow(shape === 'diecut');
       updateSummaryMeta();
       requestDraw();
     }
@@ -1421,6 +1449,8 @@
     if (outMMEl) outMMEl.addEventListener('input', requestDraw);
     if (outColorEl) outColorEl.addEventListener('input', requestDraw);
     if (colorEl)  colorEl.addEventListener('input', requestDraw);
+
+    updateShapeUI();
 
     /* ===== Materiał ===== */
     function materialMultiplier(){

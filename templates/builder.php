@@ -168,11 +168,9 @@ if ( ! defined( 'ABSPATH' ) ) {
                                     </button>
                                     <button type="button" class="shape-btn" data-shape="diecut" aria-pressed="false">
                                         <svg viewBox="0 0 24 24" aria-hidden="true">
-                                            <circle cx="7.5" cy="8" r="2.2"></circle>
-                                            <circle cx="16.5" cy="8" r="2.2"></circle>
-                                            <circle cx="9.3" cy="14.2" r="2.1"></circle>
-                                            <circle cx="14.7" cy="14.2" r="2.1"></circle>
-                                            <path d="M12 11.8c-3.2 0-5.3 2.5-5.3 5.1 0 2.4 1.9 4.1 5.3 4.1s5.3-1.7 5.3-4.1c0-2.6-2.1-5.1-5.3-5.1z"></path>
+                                            <path d="M4.8 18.6l.5-5.7-2-3.4 4.6-2 2.4-4.5 2.8 4.2 4.6-1.5 3 2.8-1.9 3.3.9 6.4-5-2.4-5 2.4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"></path>
+                                            <path d="M9.4 13.2l1.7-.6 1.5 1.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                                            <circle cx="15.2" cy="10.4" r="0.9" fill="currentColor" stroke="none"></circle>
                                         </svg>
                                     </button>
                                 </div>
@@ -190,7 +188,7 @@ if ( ! defined( 'ABSPATH' ) ) {
                                 </label>
                             </div>
                             <div class="stb-row">
-                                <div class="stb-inline">
+                                <div class="stb-inline outline-row">
                                     <label class="stb-inline" style="gap:6px;">
                                         <input type="checkbox" id="stb-outline-on" checked>
                                         <span>Obrys naklejki</span>
@@ -199,6 +197,8 @@ if ( ! defined( 'ABSPATH' ) ) {
                                         <span class="stb-lbl">Szerokość obrysu (mm)</span>
                                         <input type="number" id="stb-outline-mm" min="0" step="0.5" value="3">
                                     </label>
+                                </div>
+                                <div class="stb-inline color-row">
                                     <label class="stb-field stb-color-field">
                                         <span class="stb-lbl">Kolor obrysu</span>
                                         <div class="stb-color-input">
@@ -206,22 +206,23 @@ if ( ! defined( 'ABSPATH' ) ) {
                                             <button type="button" class="btn btn-icon color-reset" data-reset-color="stb-outline-color" aria-label="Resetuj kolor obrysu"><span aria-hidden="true">↺</span></button>
                                         </div>
                                     </label>
+                                    <label class="stb-field stb-color-field">
+                                        <span class="stb-lbl">Kolor tła</span>
+                                        <div class="stb-color-input">
+                                            <input type="color" id="stb-color" value="#ffffff" data-default="#ffffff">
+                                            <button type="button" class="btn btn-icon color-reset" data-reset-color="stb-color" aria-label="Resetuj kolor tła"><span aria-hidden="true">↺</span></button>
+                                        </div>
+                                    </label>
                                 </div>
-                                <label class="stb-field stb-color-field" style="margin-top:6px;">
-                                    <span class="stb-lbl">Kolor tła</span>
-                                    <div class="stb-color-input">
-                                        <input type="color" id="stb-color" value="#ffffff" data-default="#ffffff">
-                                        <button type="button" class="btn btn-icon color-reset" data-reset-color="stb-color" aria-label="Resetuj kolor tła"><span aria-hidden="true">↺</span></button>
-                                    </div>
-                                </label>
                             </div>
+                            <div id="stb-diecut-slot" hidden></div>
                         </div>
                     </div>
 
                     <div class="acc__item" id="acc-image">
                         <button type="button" class="acc__head" aria-expanded="false">Grafika</button>
                         <div class="acc__body" hidden>
-                            <div class="stb-row">
+                            <div class="stb-row" id="stb-upload-row">
                                 <input type="file" id="stb-image" accept="image/*,.pdf" class="stb-file-input" hidden>
                                 <div class="stb-inline">
                                     <button type="button" class="btn" id="stb-upload">Wgraj plik</button>
