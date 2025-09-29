@@ -125,7 +125,7 @@ if ( ! defined( 'ABSPATH' ) ) {
                     </section>
                 </div>
                 <div class="step-footer">
-                    <button type="button" class="btn btn-primary" id="stb-step1-next">Dalej</button>
+                    <button type="button" class="btn btn-primary btn-step" id="stb-step1-next">Dalej</button>
                 </div>
             </div>
 
@@ -133,11 +133,10 @@ if ( ! defined( 'ABSPATH' ) ) {
                 <div class="step-content">
                     <header class="step-header">
                         <h2 class="step-title">Projekt naklejki</h2>
-                        <p class="step-subtitle">Wybierz sposób przygotowania projektu</p>
                     </header>
                     <div class="step-options">
-                        <button type="button" class="btn" id="stb-upload-trigger">Wgraj własny</button>
-                        <button type="button" class="btn btn-primary" id="stb-open-modal">Stwórz w kreatorze</button>
+                        <button type="button" class="btn btn-primary btn-step" id="stb-upload-trigger">Wgraj własny</button>
+                        <button type="button" class="btn btn-primary btn-step" id="stb-open-modal">Stwórz w kreatorze</button>
                     </div>
                     <p class="step-file-info" id="stb-upload-summary">Brak pliku</p>
                     <div class="price-box">
@@ -147,7 +146,7 @@ if ( ! defined( 'ABSPATH' ) ) {
                         <div class="total-lead" id="stb-total-lead" aria-live="polite"></div>
                     </div>
                     <div class="cta">
-                        <button type="button" class="btn btn-primary" id="stb-add">Dalej</button>
+                        <button type="button" class="btn btn-primary btn-step" id="stb-add">Dalej</button>
                     </div>
                 </div>
             </div>

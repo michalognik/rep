@@ -3,6 +3,7 @@
 /* ===== Sticker Builder — base ===== */
 #stb-root{
   --accent:#2d7ff9; --ink:#111; --muted:#666; --line:#e7e7e7; --card:#fff; --radius:12px; --price-blue:#2d7ff9;
+  --cta-blue:#4b8cff; --cta-blue-hover:#3f7cf0; --cta-glow:rgba(75,140,255,.28);
   --focus-ring:rgba(45,127,249,.28); --focus-border:rgba(45,127,249,.65); --focus-bg:rgba(45,127,249,.12);
   color:var(--ink);
 }
@@ -20,31 +21,29 @@
 #stb-root .stb-steps{ display:grid; gap:18px }
 #stb-root .stb-step{ display:none; overflow:hidden }
 #stb-root .stb-step.is-active{ display:flex; flex-direction:column }
-#stb-root .stb-step .step-footer{ background:#fff; padding:0 24px 24px; display:flex; justify-content:flex-end; border-top:1px solid var(--line) }
+#stb-root .stb-step .step-footer{ background:#fff; padding:0 24px 24px; display:flex; justify-content:center; border-top:1px solid var(--line) }
 #stb-root #stb-step-1 .order-col{ padding:24px; gap:18px; border-bottom:1px solid var(--line) }
 #stb-root #stb-step-1 .step-footer{ padding:0 24px 24px }
 #stb-root #stb-step-2 .step-content{ display:grid; gap:20px; padding:24px }
-#stb-root #stb-step-2 .step-header{ display:grid; gap:6px }
-#stb-root #stb-step-2 .step-title{ margin:0; font-size:1.45rem; font-weight:800 }
-#stb-root #stb-step-2 .step-subtitle{ margin:0; font-size:.95rem; color:var(--muted); font-weight:600 }
-#stb-root #stb-step-2 .step-options{ display:flex; flex-wrap:wrap; gap:12px }
-#stb-root #stb-step-2 .step-options .btn{ flex:1 1 220px; min-width:180px; justify-content:center }
-#stb-root #stb-step-2 .step-file-info{ margin:0; font-size:.85rem; color:var(--muted); font-weight:500 }
-#stb-root #stb-step-2 .price-box{ width:100%; justify-items:flex-start; align-items:flex-start }
+#stb-root #stb-step-2 .step-header{ display:grid; gap:6px; text-align:center; align-items:center }
+#stb-root #stb-step-2 .step-title{ margin:0; font-size:1.45rem; font-weight:700; letter-spacing:.02em }
+#stb-root #stb-step-2 .step-options{ display:grid; gap:16px }
+#stb-root #stb-step-2 .step-options .btn-step{ justify-content:center }
+#stb-root #stb-step-2 .step-file-info{ margin:0; font-size:.85rem; color:var(--muted); font-weight:500; text-align:center }
+#stb-root #stb-step-2 .price-box{ width:100%; justify-items:center; align-items:center; margin-top:0 }
 #stb-root #stb-step-2 .total-val,
 #stb-root #stb-step-2 .total-net,
 #stb-root #stb-step-2 .total-save,
-#stb-root #stb-step-2 .total-lead{ text-align:left }
-#stb-root #stb-step-2 .total-net{ padding-left:14px; padding-right:14px }
-#stb-root #stb-step-2 .cta{ justify-content:flex-end }
-#stb-root #stb-step-2 .price-box{ margin-top:0 }
+#stb-root #stb-step-2 .total-lead{ text-align:center }
+#stb-root #stb-step-2 .total-net{ padding-left:18px; padding-right:18px }
+#stb-root #stb-step-2 .cta{ justify-content:center }
 
 @media (max-width:640px){
   #stb-root #stb-step-1 .order-col{ padding:18px; }
   #stb-root .stb-step .step-footer{ padding:12px 18px 18px; }
   #stb-root #stb-step-2 .step-content{ padding:18px; }
   #stb-root #stb-step-2 .step-title{ font-size:1.28rem; }
-  #stb-root #stb-step-2 .step-options .btn{ flex:1 1 100%; }
+  #stb-root #stb-step-2 .step-options{ gap:12px; }
 }
 
 /* ORDER (ilość + rozmiar + cena) */
@@ -294,6 +293,32 @@
   font-size:.9rem; text-transform:none !important; box-shadow:none !important; text-shadow:none !important;
   display:inline-flex; align-items:center; justify-content:center; gap:6px; white-space:nowrap; overflow:hidden;
 }
+#stb-root .btn-step{
+  background:var(--cta-blue) !important;
+  border-color:var(--cta-blue) !important;
+  color:#fff !important;
+  border-radius:18px;
+  padding:16px 26px;
+  font-size:1.02rem;
+  letter-spacing:.08em;
+  text-transform:uppercase !important;
+  font-weight:800;
+  box-shadow:0 14px 32px rgba(75,140,255,.25),0 0 0 1px rgba(255,255,255,.08);
+  transition:transform .15s ease, box-shadow .15s ease, background .15s ease;
+}
+#stb-root .btn-step:hover{
+  background:var(--cta-blue-hover) !important;
+  border-color:var(--cta-blue-hover) !important;
+  box-shadow:0 18px 36px rgba(63,124,240,.28);
+}
+#stb-root .btn-step:active{
+  transform:translateY(1px);
+  box-shadow:0 10px 24px rgba(63,124,240,.26);
+}
+#stb-root .step-footer .btn-step,
+#stb-root #stb-step-2 .cta .btn-step{ width:100%; }
+#stb-root #stb-step-2 .step-options .btn-step{ width:100%; }
+#stb-root .btn-step:focus-visible{ box-shadow:0 0 0 4px rgba(255,255,255,.5),0 0 0 6px var(--cta-glow); }
 #stb-root .btn-icon,
 .stb-modal .btn-icon,
 .stb-quote-popup .btn-icon{
