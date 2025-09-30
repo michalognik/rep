@@ -136,6 +136,26 @@
     const uploadConfig = window.STB_UPLOAD || {};
     const parsedUploadLimit = Number(uploadConfig.max_upload_bytes);
     const MAX_UPLOAD_BYTES = (Number.isFinite(parsedUploadLimit) && parsedUploadLimit > 0) ? parsedUploadLimit : (25 * 1024 * 1024);
+    const allowedMimeList = Array.isArray(uploadConfig.allowed_mimes) ? uploadConfig.allowed_mimes : [];
+    const allowedExtList = Array.isArray(uploadConfig.allowed_exts) ? uploadConfig.allowed_exts : [];
+    const disallowedExtList = Array.isArray(uploadConfig.disallowed_exts) ? uploadConfig.disallowed_exts : [];
+    const allowedMimeSet = new Set(allowedMimeList.map(val => String(val || '').toLowerCase()).filter(Boolean));
+    const allowedExtSet = new Set(allowedExtList.map(val => String(val || '').toLowerCase()).filter(Boolean));
+    if (!allowedMimeSet.size){
+      allowedMimeSet.add('image/jpeg');
+      allowedMimeSet.add('image/png');
+      allowedMimeSet.add('application/pdf');
+      allowedMimeSet.add('image/pjpeg');
+    } else {
+      allowedMimeSet.add('image/pjpeg');
+    }
+    if (!allowedExtSet.size){
+      ['jpg','jpeg','jpe','png','pdf'].forEach(ext => allowedExtSet.add(ext));
+    }
+    const disallowedExtSet = new Set(disallowedExtList.map(val => String(val || '').toLowerCase()).filter(Boolean));
+    if (!disallowedExtSet.size){
+      ['svg','svgz','zip','rar','7z','php','phtml','phar','js','cgi','pl','asp','aspx'].forEach(ext => disallowedExtSet.add(ext));
+    }
 
     const PDFLib = window.PDFLib || null;         // eksport PDF
     const QRCodeLib = window.QRCode || null;      // davidshimjs
@@ -1857,6 +1877,37 @@
       if (!f){ clearImage(); return; }
       const name = f.name || '';
       if (fName) fName.textContent = name || 'brak pliku';
+
+      const lowerName = (name || '').toLowerCase();
+      const ext = lowerName.includes('.') ? lowerName.split('.').pop() : '';
+      const typeLower = (f.type || '').toLowerCase();
+
+      const hitsDisallowed = (()=>{
+        if (ext && disallowedExtSet.has(ext)) return true;
+        for (const bad of disallowedExtSet){
+          if (!bad) continue;
+          if (typeLower && typeLower.includes(bad)) return true;
+          if (lowerName.endsWith('.' + bad)) return true;
+        }
+        return false;
+      })();
+      if (hitsDisallowed){
+        clearImage({ keepSummary:true });
+        if (uploadSummary){
+          uploadSummary.textContent = 'Ten typ pliku jest zablokowany. Dozwolone formaty: JPG, PNG lub PDF.';
+        }
+        return;
+      }
+
+      const allowedByExt = ext && allowedExtSet.has(ext);
+      const allowedByMime = typeLower && allowedMimeSet.has(typeLower);
+      if (!allowedByExt && !allowedByMime){
+        clearImage({ keepSummary:true });
+        if (uploadSummary){
+          uploadSummary.textContent = 'Nieobsługiwany format pliku. Wgraj JPG, PNG lub PDF.';
+        }
+        return;
+      }
 
       // jeśli diecut — tylko PNG z przezroczystością
       if (shape==='diecut'){

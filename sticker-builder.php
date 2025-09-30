@@ -57,12 +57,177 @@ final class WC_Sticker_Builder {
         $mimes = [
             'jpg|jpeg|jpe' => 'image/jpeg',
             'png'          => 'image/png',
-            'webp'         => 'image/webp',
-            'svg'          => 'image/svg+xml',
             'pdf'          => 'application/pdf',
         ];
 
         return apply_filters( 'stb_allowed_mimes', $mimes );
+    }
+
+    protected static function allowed_extensions() {
+        $extensions = [];
+        foreach ( self::allowed_mimes() as $exts => $mime ) {
+            foreach ( explode( '|', $exts ) as $ext ) {
+                $ext = strtolower( trim( $ext ) );
+                if ( $ext ) {
+                    $extensions[] = $ext;
+                }
+            }
+        }
+
+        return array_values( array_unique( $extensions ) );
+    }
+
+    protected static function disallowed_extensions() {
+        return [ 'svg', 'svgz', 'zip', 'rar', '7z', 'tar', 'gz', 'tgz', 'php', 'phtml', 'phar', 'cgi', 'pl', 'asp', 'aspx', 'js', 'exe', 'sh', 'bat', 'cmd' ];
+    }
+
+    protected static function is_extension_allowed( $filename ) {
+        $ext = strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) );
+        if ( ! $ext ) {
+            return false;
+        }
+
+        if ( in_array( $ext, self::disallowed_extensions(), true ) ) {
+            return false;
+        }
+
+        return in_array( $ext, self::allowed_extensions(), true );
+    }
+
+    protected static function validate_magic_signature( $file_path, $mime_type ) {
+        if ( ! $file_path || ! file_exists( $file_path ) || ! is_readable( $file_path ) ) {
+            return false;
+        }
+
+        $mime_type = strtolower( trim( (string) $mime_type ) );
+        $fh        = fopen( $file_path, 'rb' );
+        if ( ! $fh ) {
+            return false;
+        }
+
+        $bytes = fread( $fh, 12 );
+        fclose( $fh );
+
+        if ( ! $bytes ) {
+            return false;
+        }
+
+        $signature = bin2hex( substr( $bytes, 0, 8 ) );
+
+        switch ( $mime_type ) {
+            case 'image/jpeg':
+                return 0 === strpos( $signature, 'ffd8ff' );
+            case 'image/png':
+                return '89504e470d0a1a0a' === $signature;
+            case 'application/pdf':
+                return 0 === strpos( $bytes, '%PDF-' );
+            default:
+                return false;
+        }
+    }
+
+    protected static function detect_mime_type( $file_path ) {
+        if ( ! $file_path || ! file_exists( $file_path ) ) {
+            return '';
+        }
+
+        if ( function_exists( 'finfo_open' ) ) {
+            $finfo = finfo_open( FILEINFO_MIME_TYPE );
+            if ( $finfo ) {
+                $type = finfo_file( $finfo, $file_path );
+                finfo_close( $finfo );
+                if ( $type ) {
+                    return strtolower( $type );
+                }
+            }
+        }
+
+        if ( function_exists( 'mime_content_type' ) ) {
+            $type = mime_content_type( $file_path );
+            if ( $type ) {
+                return strtolower( $type );
+            }
+        }
+
+        return '';
+    }
+
+    protected static function ensure_upload_directory_protection( $directory ) {
+        if ( ! $directory ) {
+            return;
+        }
+
+        $uploads = wp_upload_dir();
+        if ( empty( $uploads['basedir'] ) ) {
+            return;
+        }
+
+        $base = trailingslashit( wp_normalize_path( $uploads['basedir'] ) ) . 'stb';
+        $dir  = wp_normalize_path( $directory );
+
+        if ( strpos( $dir, $base ) !== 0 ) {
+            return;
+        }
+
+        $marker_start = '# BEGIN Sticker Builder Upload Protection';
+        $marker_end   = '# END Sticker Builder Upload Protection';
+        $rules        = $marker_start . "\n"
+            . '<FilesMatch "\\.(php|phtml|phar|cgi|pl|asp|aspx)$">' . "\n"
+            . "  Require all denied\n"
+            . "</FilesMatch>\n"
+            . "Options -ExecCGI\n"
+            . "RemoveHandler .php .phtml .phar .cgi .pl .asp .aspx\n"
+            . $marker_end . "\n";
+
+        while ( $dir && strpos( $dir, $base ) === 0 ) {
+            if ( is_dir( $dir ) && is_writable( $dir ) ) {
+                $htaccess = trailingslashit( $dir ) . '.htaccess';
+                if ( file_exists( $htaccess ) ) {
+                    $contents = file_get_contents( $htaccess );
+                    if ( false === strpos( (string) $contents, $marker_start ) ) {
+                        if ( $contents && "\n" !== substr( $contents, -1 ) ) {
+                            $contents .= "\n";
+                        }
+                        $contents .= $rules;
+                        file_put_contents( $htaccess, $contents, LOCK_EX );
+                    }
+                } else {
+                    file_put_contents( $htaccess, $rules, LOCK_EX );
+                }
+            }
+
+            if ( $dir === $base ) {
+                break;
+            }
+
+            $dir = wp_normalize_path( dirname( $dir ) );
+        }
+    }
+
+    public static function filter_upload_dir( $dirs ) {
+        if ( ! is_array( $dirs ) ) {
+            return $dirs;
+        }
+
+        $subdir = '/stb';
+        if ( ! empty( $dirs['subdir'] ) ) {
+            $subdir .= '/' . ltrim( $dirs['subdir'], '/' );
+        }
+
+        $subdir = preg_replace( '#/+#', '/', $subdir );
+        $subdir = '/' . ltrim( $subdir, '/' );
+
+        if ( isset( $dirs['basedir'] ) ) {
+            $dirs['path'] = trailingslashit( $dirs['basedir'] ) . ltrim( $subdir, '/' );
+        }
+
+        if ( isset( $dirs['baseurl'] ) ) {
+            $dirs['url'] = trailingslashit( $dirs['baseurl'] ) . ltrim( $subdir, '/' );
+        }
+
+        $dirs['subdir'] = $subdir;
+
+        return $dirs;
     }
 
     protected static function upload_error_message( $code ) {
@@ -97,6 +262,15 @@ final class WC_Sticker_Builder {
             wp_send_json_error( [ 'message' => self::upload_error_message( $file['error'] ) ] );
         }
 
+        $original_name = isset( $file['name'] ) ? $file['name'] : '';
+        if ( $original_name && ! self::is_extension_allowed( $original_name ) ) {
+            wp_send_json_error(
+                [
+                    'message' => __( 'Nieobsługiwany typ pliku. Dozwolone formaty: JPG, PNG lub PDF.', 'stb' ),
+                ]
+            );
+        }
+
         $limit = self::max_upload_bytes();
         if ( $limit > 0 && ! empty( $file['size'] ) && intval( $file['size'] ) > $limit ) {
             wp_send_json_error(
@@ -109,13 +283,33 @@ final class WC_Sticker_Builder {
             );
         }
 
-        $file['name'] = isset( $file['name'] ) ? sanitize_file_name( $file['name'] ) : 'upload';
+        $file['name'] = $original_name ? sanitize_file_name( $original_name ) : 'upload';
+
+        if ( $file['name'] && ! self::is_extension_allowed( $file['name'] ) ) {
+            wp_send_json_error( [ 'message' => __( 'Nieobsługiwany typ pliku.', 'stb' ) ] );
+        }
 
         $allowed_mimes = self::allowed_mimes();
         $checked       = wp_check_filetype_and_ext( $file['tmp_name'], $file['name'], $allowed_mimes );
 
         if ( empty( $checked['type'] ) || empty( $checked['ext'] ) ) {
             wp_send_json_error( [ 'message' => __( 'Nieobsługiwany typ pliku.', 'stb' ) ] );
+        }
+
+        $detected_mime = self::detect_mime_type( $file['tmp_name'] );
+        if ( $detected_mime && $checked['type'] ) {
+            $allowed_type = strtolower( $checked['type'] );
+            $valid_mimes  = [ $allowed_type ];
+            if ( 'image/jpeg' === $allowed_type ) {
+                $valid_mimes[] = 'image/pjpeg';
+            }
+            if ( ! in_array( $detected_mime, $valid_mimes, true ) ) {
+                wp_send_json_error( [ 'message' => __( 'Typ pliku nie jest dozwolony.', 'stb' ) ] );
+            }
+        }
+
+        if ( ! self::validate_magic_signature( $file['tmp_name'], $checked['type'] ) ) {
+            wp_send_json_error( [ 'message' => __( 'Plik wydaje się uszkodzony lub niezgodny z deklarowanym typem.', 'stb' ) ] );
         }
 
         if ( ! empty( $checked['proper_filename'] ) ) {
@@ -126,6 +320,15 @@ final class WC_Sticker_Builder {
         require_once ABSPATH . 'wp-admin/includes/image.php';
         require_once ABSPATH . 'wp-admin/includes/media.php';
 
+        $uploads = wp_upload_dir();
+        if ( empty( $uploads['error'] ) && ! empty( $uploads['basedir'] ) ) {
+            $target = trailingslashit( $uploads['basedir'] ) . 'stb';
+            if ( ! is_dir( $target ) ) {
+                wp_mkdir_p( $target );
+            }
+        }
+
+        add_filter( 'upload_dir', [ __CLASS__, 'filter_upload_dir' ] );
         $upload = wp_handle_upload(
             $file,
             [
@@ -134,6 +337,7 @@ final class WC_Sticker_Builder {
                 'test_type' => true,
             ]
         );
+        remove_filter( 'upload_dir', [ __CLASS__, 'filter_upload_dir' ] );
 
         if ( isset( $upload['error'] ) && $upload['error'] ) {
             wp_send_json_error( [ 'message' => $upload['error'] ] );
@@ -165,6 +369,10 @@ final class WC_Sticker_Builder {
 
                 update_post_meta( $attachment_id, '_stb_temp_upload', time() );
             }
+        }
+
+        if ( ! empty( $upload['file'] ) ) {
+            self::ensure_upload_directory_protection( dirname( $upload['file'] ) );
         }
 
         $size = isset( $file['size'] ) ? intval( $file['size'] ) : 0;
@@ -400,6 +608,10 @@ final class WC_Sticker_Builder {
             ]
         );
 
+        $allowed_mime_values = array_values( array_unique( array_map( 'strval', array_values( self::allowed_mimes() ) ) ) );
+        $allowed_exts        = self::allowed_extensions();
+        $disallowed_exts     = self::disallowed_extensions();
+
         wp_localize_script(
             'sticker-builder',
             'STB_UPLOAD',
@@ -407,6 +619,9 @@ final class WC_Sticker_Builder {
                 'ajax_url'         => admin_url( 'admin-ajax.php' ),
                 'nonce'            => wp_create_nonce( self::upload_nonce_action() ),
                 'max_upload_bytes' => self::max_upload_bytes(),
+                'allowed_mimes'    => $allowed_mime_values,
+                'allowed_exts'     => $allowed_exts,
+                'disallowed_exts'  => $disallowed_exts,
             ]
         );
     }
