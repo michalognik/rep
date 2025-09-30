@@ -108,6 +108,52 @@ final class WC_Sticker_Builder {
             file_exists( $main_abs ) ? filemtime( $main_abs ) : '1.0.0',
             true
         );
+
+        $currency_code = 'PLN';
+        if ( function_exists( 'woocs_get_current_currency' ) ) {
+            $currency_code = woocs_get_current_currency();
+        } elseif ( function_exists( 'get_woocommerce_currency' ) ) {
+            $currency_code = get_woocommerce_currency();
+        }
+        if ( ! is_string( $currency_code ) || $currency_code === '' ) {
+            $currency_code = 'PLN';
+        }
+        $currency_code = strtoupper( sanitize_text_field( $currency_code ) );
+
+        $currency_symbol = function_exists( 'get_woocommerce_currency_symbol' )
+            ? get_woocommerce_currency_symbol( $currency_code )
+            : $currency_code;
+        if ( is_string( $currency_symbol ) ) {
+            $currency_symbol = html_entity_decode( wp_strip_all_tags( $currency_symbol ) );
+        } else {
+            $currency_symbol = $currency_code;
+        }
+        $currency_symbol = sanitize_text_field( trim( $currency_symbol ) );
+
+        $currency_position = sanitize_text_field( (string) get_option( 'woocommerce_currency_pos', 'right' ) );
+
+        $rate = apply_filters( 'woocs_exchange_value', 1 );
+        if ( ! is_numeric( $rate ) || floatval( $rate ) <= 0 ) {
+            $rate = 1;
+        }
+
+        $locale = function_exists( 'determine_locale' ) ? determine_locale() : get_locale();
+        if ( ! is_string( $locale ) || $locale === '' ) {
+            $locale = 'pl_PL';
+        }
+        $locale = sanitize_text_field( $locale );
+
+        wp_localize_script(
+            'sticker-builder',
+            'STB_CURR',
+            [
+                'code'     => $currency_code,
+                'symbol'   => $currency_symbol,
+                'position' => $currency_position,
+                'rate'     => floatval( $rate ),
+                'locale'   => $locale,
+            ]
+        );
     }
 
     public static function render_shortcode( $atts = [], $content = '' ) {
