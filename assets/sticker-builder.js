@@ -274,6 +274,7 @@
 
     const totalOutEls     = $$('[data-stb-total]');
     const totalNetOutEls  = $$('[data-stb-total-net]');
+    const totalUnitOutEls = $$('[data-stb-total-unit]');
     const totalSaveOutEls = $$('[data-stb-total-save]');
     const totalLeadOutEls = $$('[data-stb-total-lead]');
     const priceTimerEls   = $$('[data-stb-price-timer]');
@@ -2597,12 +2598,21 @@
         pctSave = Math.max(0, 100 - ratioPct);
       }
 
+      const safeQty = Number.isFinite(qty) && qty > 0 ? qty : 0;
+
       if (calc.total_area >= 100){
         totalOutEls.forEach((el)=> clearWooPrice(el, 'WYCENA INDYWIDUALNA'));
         totalNetOutEls.forEach((el)=> clearWooPrice(el, ''));
+        totalUnitOutEls.forEach((el)=> clearWooPrice(el, ''));
       } else {
         totalOutEls.forEach((el)=> renderWooPrice(el, calc.total));
         totalNetOutEls.forEach((el)=> renderWooPrice(el, calc.net, { prefix: 'Netto:' }));
+        if (safeQty > 0){
+          const unitNet = calc.net / safeQty;
+          totalUnitOutEls.forEach((el)=> renderWooPrice(el, unitNet));
+        } else {
+          totalUnitOutEls.forEach((el)=> clearWooPrice(el, ''));
+        }
       }
       const saveText = (pctSave >= 0.5) ? ('Oszczędzasz ' + Math.round(pctSave) + '%') : '';
       totalSaveOutEls.forEach((el)=>{ el.textContent = saveText; });

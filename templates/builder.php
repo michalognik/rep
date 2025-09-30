@@ -200,6 +200,10 @@ $stb_zero_net_markup = sprintf(
                     <div class="price-box" data-stb-price-box>
                         <div class="total-val" id="stb-total" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
                         <div class="total-net" id="stb-total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
+                        <div class="total-unit">
+                            <span class="total-unit-value" data-stb-total-unit><?php echo wp_kses_post( $stb_zero_price_markup ); ?></span>
+                            <span class="total-unit-label"><?php esc_html_e( 'cena/szt.', 'sticker-builder' ); ?></span>
+                        </div>
                         <div class="total-save" id="stb-total-save" data-stb-total-save aria-live="polite"></div>
                     </div>
                 </div>
@@ -245,6 +249,10 @@ $stb_zero_net_markup = sprintf(
                         <div class="price-box" data-stb-price-box>
                             <div class="total-val" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
                             <div class="total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
+                            <div class="total-unit">
+                                <span class="total-unit-value" data-stb-total-unit><?php echo wp_kses_post( $stb_zero_price_markup ); ?></span>
+                                <span class="total-unit-label"><?php esc_html_e( 'cena/szt.', 'sticker-builder' ); ?></span>
+                            </div>
                             <div class="total-save" data-stb-total-save aria-live="polite"></div>
                             <div class="total-lead" data-stb-total-lead aria-live="polite"></div>
                         </div>
@@ -586,6 +594,10 @@ $stb_zero_net_markup = sprintf(
             <div class="price-box" data-stb-price-box>
                 <div class="total-val" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
                 <div class="total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
+                <div class="total-unit">
+                    <span class="total-unit-value" data-stb-total-unit><?php echo wp_kses_post( $stb_zero_price_markup ); ?></span>
+                    <span class="total-unit-label"><?php esc_html_e( 'cena/szt.', 'sticker-builder' ); ?></span>
+                </div>
                 <div class="total-save" data-stb-total-save aria-live="polite"></div>
                 <div class="total-lead" data-stb-total-lead aria-live="polite"></div>
             </div>
