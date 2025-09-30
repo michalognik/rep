@@ -10,7 +10,6 @@
 #stb-root, #stb-root *{ box-sizing:border-box }
 #stb-root :is(h1,h2,h3,h4,h5,h6,p,span,small,button,input,label,select,textarea){
   font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif !important;
-  color:var(--ink) !important;
 }
 #stb-root .label{ font-size:.72rem !important; color:var(--muted) !important; text-transform:uppercase; letter-spacing:.04em; font-weight:700 }
 
@@ -347,7 +346,10 @@
   box-shadow:0 14px 32px rgba(75,140,255,.25),0 0 0 1px rgba(255,255,255,.08);
   transition:transform .15s ease, box-shadow .15s ease, background .15s ease;
 }
-#stb-root .btn-step *{ color:#fff !important; }
+#stb-root .btn-step *{
+  color:#fff !important;
+  -webkit-text-fill-color:#fff;
+}
 #stb-root .btn-step:hover{
   background:var(--cta-blue-hover) !important;
   border-color:var(--cta-blue-hover) !important;
