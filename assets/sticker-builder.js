@@ -3,7 +3,27 @@
     "use strict";
 
     /* ===== Konfiguracja/zgodność ===== */
-    const CURR = (window.STB_CURR) || { code:'PLN', rate:1, symbol:'zł', position:'right', locale:'pl-PL' };
+    const DEFAULT_CURRENCY = { code:'PLN', rate:1, symbol:'zł', position:'right', locale:'pl-PL' };
+
+    function normalizeCurrency(raw){
+      const base = { ...DEFAULT_CURRENCY };
+      if (!raw || typeof raw !== 'object') return base;
+      const code = raw.code || raw.currency;
+      if (code && typeof code === 'string') base.code = code.toUpperCase();
+      const symbol = raw.symbol;
+      if (symbol && typeof symbol === 'string') base.symbol = symbol;
+      const position = raw.position;
+      if (position && typeof position === 'string') base.position = position;
+      const locale = raw.locale || raw.lang;
+      if (locale && typeof locale === 'string') base.locale = locale;
+      const rawRate = (raw.rate != null ? raw.rate : raw.multiplier);
+      const rateNum = typeof rawRate === 'string' ? parseFloat(rawRate.replace(',', '.')) : Number(rawRate);
+      if (Number.isFinite(rateNum) && rateNum > 0){ base.rate = rateNum; }
+      return base;
+    }
+
+    let currencyState = normalizeCurrency(window.STB_CURR);
+    let currencySignature = JSON.stringify(currencyState);
     const FIELD = 'stb_payload';
     const CART_URL = (window.STB_CART_URL || '');
 
@@ -465,9 +485,23 @@
 
     /* ===== Utils ===== */
     const fmtMoney = (pln) => {
-      const amount = (pln||0) * (CURR.rate || 1);
-      try { return new Intl.NumberFormat(CURR.locale || 'pl-PL', {style:'currency', currency: CURR.code || 'PLN'}).format(amount); }
-      catch(e){ return (amount||0).toFixed(2) + ' ' + (CURR.code||'PLN'); }
+      const curr = currencyState || DEFAULT_CURRENCY;
+      const amount = (pln||0) * (curr.rate || 1);
+      try {
+        return new Intl.NumberFormat(curr.locale || 'pl-PL', {
+          style:'currency',
+          currency: curr.code || 'PLN'
+        }).format(amount);
+      }
+      catch(e){
+        const fallback = (amount||0).toFixed(2);
+        if (curr.position === 'left'){ return (curr.symbol || curr.code || 'PLN') + ' ' + fallback; }
+        if (curr.position === 'left_space'){ return (curr.symbol || curr.code || 'PLN') + ' ' + fallback; }
+        if (curr.position === 'right' || curr.position === 'right_space'){
+          return fallback + ' ' + (curr.symbol || curr.code || 'PLN');
+        }
+        return fallback + ' ' + (curr.code || 'PLN');
+      }
     };
     const prettyBytes = (b)=>{
       if (!isFinite(b) || b<=0) return '';
@@ -2571,6 +2605,60 @@
       if (wooBtn){ wooBtn.click(); } else { form.submit(); }
     };
     if (addBtn)      addBtn.addEventListener('click', handleAddToCart);
+
+    /* ===== Waluty ===== */
+    function handleCurrencyUpdate(raw){
+      const next = normalizeCurrency(raw || window.STB_CURR);
+      const sig = JSON.stringify(next);
+      if (sig === currencySignature) return;
+      currencyState = next;
+      currencySignature = sig;
+      refreshQtyPrices();
+      updatePriceAndJSON();
+    }
+
+    function onCurrencyEvent(evt){
+      if (!evt) { handleCurrencyUpdate(window.STB_CURR); return; }
+      const detail = evt.detail;
+      if (detail && typeof detail === 'object'){ handleCurrencyUpdate(detail); }
+      else { handleCurrencyUpdate(window.STB_CURR); }
+    }
+
+    const currencyEvents = [
+      'stb:currency-change',
+      'stb:update-currency',
+      'stbCurrencyChange',
+      'woocommerce_currency_set',
+      'currency_switcher_refreshed'
+    ];
+
+    currencyEvents.forEach(evt=>{
+      window.addEventListener(evt, onCurrencyEvent, true);
+      document.addEventListener(evt, onCurrencyEvent, true);
+    });
+
+    if (typeof window.STB_refreshCurrency === 'function'){
+      const prevCurrencyHook = window.STB_refreshCurrency;
+      window.STB_refreshCurrency = function(raw){
+        try { prevCurrencyHook.call(window, raw); }
+        catch(err){ console.error('STB_refreshCurrency legacy hook error:', err); }
+        handleCurrencyUpdate(raw);
+      };
+    } else {
+      window.STB_refreshCurrency = handleCurrencyUpdate;
+    }
+
+    let currencyPollId = null;
+    function startCurrencyPolling(){
+      const poll = ()=> handleCurrencyUpdate(window.STB_CURR);
+      poll();
+      currencyPollId = window.setInterval(poll, 2000);
+    }
+
+    startCurrencyPolling();
+    window.addEventListener('beforeunload', ()=>{
+      if (currencyPollId) window.clearInterval(currencyPollId);
+    }, { once:true });
 
     /* ===== Modal ===== */
     const modal = byId('stb-modal');
