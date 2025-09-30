@@ -2725,9 +2725,35 @@
     if (addBtn)      addBtn.addEventListener('click', handleAddToCart);
 
     /* ===== Waluty ===== */
-    function refreshCurrencyUI(){
+    let lastCurrencySignature = null;
+
+    function captureCurrencySignature(){
+      const curr = currentCurrency();
+      const rate = (curr && typeof curr.rate === 'number' && Number.isFinite(curr.rate)) ? curr.rate : '';
+      return [
+        curr && curr.code ? curr.code : '',
+        curr && curr.symbol ? curr.symbol : '',
+        curr && curr.position ? curr.position : '',
+        curr && curr.locale ? curr.locale : '',
+        rate === '' ? '' : String(rate)
+      ].join('|');
+    }
+
+    function applyCurrencyRefresh(){
       refreshQtyPrices();
       updatePriceAndJSON();
+    }
+
+    function ensureCurrencySync(force){
+      const signature = captureCurrencySignature();
+      if (!force && signature === lastCurrencySignature){ return; }
+      applyCurrencyRefresh();
+      lastCurrencySignature = captureCurrencySignature();
+    }
+
+    function refreshCurrencyUI(){
+      applyCurrencyRefresh();
+      lastCurrencySignature = captureCurrencySignature();
     }
 
     const currencyEvents = [
@@ -2740,14 +2766,20 @@
       'woocs_conversion_done'
     ];
 
+    const handleCurrencyEvent = ()=>{
+      ensureCurrencySync(true);
+      window.setTimeout(()=> ensureCurrencySync(), 25);
+      window.setTimeout(()=> ensureCurrencySync(), 200);
+    };
+
     currencyEvents.forEach(evt=>{
-      window.addEventListener(evt, refreshCurrencyUI, true);
-      document.addEventListener(evt, refreshCurrencyUI, true);
+      window.addEventListener(evt, handleCurrencyEvent, true);
+      document.addEventListener(evt, handleCurrencyEvent, true);
     });
 
     if (window.jQuery && typeof window.jQuery === 'function'){
       try {
-        window.jQuery(document).on('woocs_currency_changed woocs_conversion_done woocs_rates_updated', refreshCurrencyUI);
+        window.jQuery(document).on('woocs_currency_changed woocs_conversion_done woocs_rates_updated', handleCurrencyEvent);
       } catch(err){
         console.error('WOOCS hook error:', err);
       }
@@ -2758,11 +2790,43 @@
       window.STB_refreshCurrency = function(){
         try { prevCurrencyHook.apply(window, arguments); }
         catch(err){ console.error('STB_refreshCurrency legacy hook error:', err); }
-        refreshCurrencyUI();
+        handleCurrencyEvent();
       };
     } else {
-      window.STB_refreshCurrency = refreshCurrencyUI;
+      window.STB_refreshCurrency = handleCurrencyEvent;
     }
+
+    if (typeof window.woocs_set_currency === 'function'){
+      const prevWoocsSet = window.woocs_set_currency;
+      window.woocs_set_currency = function(){
+        const result = prevWoocsSet.apply(this, arguments);
+        handleCurrencyEvent();
+        return result;
+      };
+    }
+
+    let currencyObserverBody = null;
+    let currencyObserverHtml = null;
+
+    if (window.MutationObserver){
+      const observerCfg = { attributes:true, attributeFilter:['data-woocs-currency','data-woocs-rate','data-currency','data-woocs-symbol'] };
+      if (document.body){
+        currencyObserverBody = new MutationObserver(handleCurrencyEvent);
+        currencyObserverBody.observe(document.body, observerCfg);
+      }
+      if (document.documentElement){
+        currencyObserverHtml = new MutationObserver(handleCurrencyEvent);
+        currencyObserverHtml.observe(document.documentElement, observerCfg);
+      }
+    }
+
+    const currencyPollId = window.setInterval(()=> ensureCurrencySync(), 1500);
+    window.addEventListener('focus', ()=> window.setTimeout(()=> ensureCurrencySync(), 30));
+    window.addEventListener('beforeunload', ()=>{
+      if (currencyObserverBody){ currencyObserverBody.disconnect(); currencyObserverBody = null; }
+      if (currencyObserverHtml){ currencyObserverHtml.disconnect(); currencyObserverHtml = null; }
+      if (currencyPollId){ window.clearInterval(currencyPollId); }
+    });
 
     /* ===== Modal ===== */
     const modal = byId('stb-modal');
@@ -2817,6 +2881,7 @@
 
     refreshQtyPrices();
     updatePriceAndJSON();
+    lastCurrencySignature = captureCurrencySignature();
     requestDraw();
 
     if (!QRCodeLib) console.warn('Uwaga: biblioteka QR (davidshimjs) nie została wykryta.');
