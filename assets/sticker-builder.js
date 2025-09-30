@@ -5,25 +5,44 @@
     /* ===== Konfiguracja/zgodność ===== */
     const DEFAULT_CURRENCY = { code:'PLN', rate:1, symbol:'zł', position:'right', locale:'pl-PL' };
 
-    function normalizeCurrency(raw){
+    function currentCurrency(){
       const base = { ...DEFAULT_CURRENCY };
+      const raw = window.STB_CURR;
       if (!raw || typeof raw !== 'object') return base;
-      const code = raw.code || raw.currency;
-      if (code && typeof code === 'string') base.code = code.toUpperCase();
-      const symbol = raw.symbol;
-      if (symbol && typeof symbol === 'string') base.symbol = symbol;
-      const position = raw.position;
-      if (position && typeof position === 'string') base.position = position;
-      const locale = raw.locale || raw.lang;
-      if (locale && typeof locale === 'string') base.locale = locale;
+
+      if (typeof raw.code === 'string' && raw.code){
+        base.code = raw.code.toUpperCase();
+      } else if (typeof raw.currency === 'string' && raw.currency){
+        base.code = raw.currency.toUpperCase();
+      }
+
+      if (typeof raw.symbol === 'string' && raw.symbol){
+        base.symbol = raw.symbol;
+      }
+
+      if (typeof raw.position === 'string' && raw.position){
+        base.position = raw.position;
+      }
+
+      if (typeof raw.locale === 'string' && raw.locale){
+        base.locale = raw.locale;
+      } else if (typeof raw.lang === 'string' && raw.lang){
+        base.locale = raw.lang;
+      }
+
       const rawRate = (raw.rate != null ? raw.rate : raw.multiplier);
-      const rateNum = typeof rawRate === 'string' ? parseFloat(rawRate.replace(',', '.')) : Number(rawRate);
-      if (Number.isFinite(rateNum) && rateNum > 0){ base.rate = rateNum; }
+      let rateNum = Number(rawRate);
+      if (typeof rawRate === 'string'){
+        const normalized = rawRate.replace(',', '.');
+        const parsed = parseFloat(normalized);
+        if (Number.isFinite(parsed)) rateNum = parsed;
+      }
+      if (Number.isFinite(rateNum) && rateNum > 0){
+        base.rate = rateNum;
+      }
+
       return base;
     }
-
-    let currencyState = normalizeCurrency(window.STB_CURR);
-    let currencySignature = JSON.stringify(currencyState);
     const FIELD = 'stb_payload';
     const CART_URL = (window.STB_CART_URL || '');
 
@@ -485,7 +504,7 @@
 
     /* ===== Utils ===== */
     const fmtMoney = (pln) => {
-      const curr = currencyState || DEFAULT_CURRENCY;
+      const curr = currentCurrency();
       const amount = (pln||0) * (curr.rate || 1);
       try {
         return new Intl.NumberFormat(curr.locale || 'pl-PL', {
@@ -2607,21 +2626,9 @@
     if (addBtn)      addBtn.addEventListener('click', handleAddToCart);
 
     /* ===== Waluty ===== */
-    function handleCurrencyUpdate(raw){
-      const next = normalizeCurrency(raw || window.STB_CURR);
-      const sig = JSON.stringify(next);
-      if (sig === currencySignature) return;
-      currencyState = next;
-      currencySignature = sig;
+    function refreshCurrencyUI(){
       refreshQtyPrices();
       updatePriceAndJSON();
-    }
-
-    function onCurrencyEvent(evt){
-      if (!evt) { handleCurrencyUpdate(window.STB_CURR); return; }
-      const detail = evt.detail;
-      if (detail && typeof detail === 'object'){ handleCurrencyUpdate(detail); }
-      else { handleCurrencyUpdate(window.STB_CURR); }
     }
 
     const currencyEvents = [
@@ -2629,36 +2636,34 @@
       'stb:update-currency',
       'stbCurrencyChange',
       'woocommerce_currency_set',
-      'currency_switcher_refreshed'
+      'currency_switcher_refreshed',
+      'woocs_currency_changed',
+      'woocs_conversion_done'
     ];
 
     currencyEvents.forEach(evt=>{
-      window.addEventListener(evt, onCurrencyEvent, true);
-      document.addEventListener(evt, onCurrencyEvent, true);
+      window.addEventListener(evt, refreshCurrencyUI, true);
+      document.addEventListener(evt, refreshCurrencyUI, true);
     });
+
+    if (window.jQuery && typeof window.jQuery === 'function'){
+      try {
+        window.jQuery(document).on('woocs_currency_changed woocs_conversion_done woocs_rates_updated', refreshCurrencyUI);
+      } catch(err){
+        console.error('WOOCS hook error:', err);
+      }
+    }
 
     if (typeof window.STB_refreshCurrency === 'function'){
       const prevCurrencyHook = window.STB_refreshCurrency;
-      window.STB_refreshCurrency = function(raw){
-        try { prevCurrencyHook.call(window, raw); }
+      window.STB_refreshCurrency = function(){
+        try { prevCurrencyHook.apply(window, arguments); }
         catch(err){ console.error('STB_refreshCurrency legacy hook error:', err); }
-        handleCurrencyUpdate(raw);
+        refreshCurrencyUI();
       };
     } else {
-      window.STB_refreshCurrency = handleCurrencyUpdate;
+      window.STB_refreshCurrency = refreshCurrencyUI;
     }
-
-    let currencyPollId = null;
-    function startCurrencyPolling(){
-      const poll = ()=> handleCurrencyUpdate(window.STB_CURR);
-      poll();
-      currencyPollId = window.setInterval(poll, 2000);
-    }
-
-    startCurrencyPolling();
-    window.addEventListener('beforeunload', ()=>{
-      if (currencyPollId) window.clearInterval(currencyPollId);
-    }, { once:true });
 
     /* ===== Modal ===== */
     const modal = byId('stb-modal');
