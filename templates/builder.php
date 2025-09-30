@@ -2,142 +2,256 @@
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
+
+$stb_currency_code = 'PLN';
+if ( function_exists( 'woocs_get_current_currency' ) ) {
+    $stb_currency_code = woocs_get_current_currency();
+} elseif ( function_exists( 'get_woocommerce_currency' ) ) {
+    $stb_currency_code = get_woocommerce_currency();
+}
+if ( ! is_string( $stb_currency_code ) || $stb_currency_code === '' ) {
+    $stb_currency_code = 'PLN';
+}
+$stb_currency_code = strtoupper( sanitize_text_field( $stb_currency_code ) );
+
+$stb_currency_symbol = function_exists( 'get_woocommerce_currency_symbol' )
+    ? get_woocommerce_currency_symbol( $stb_currency_code )
+    : $stb_currency_code;
+if ( is_string( $stb_currency_symbol ) ) {
+    $stb_currency_symbol = html_entity_decode( wp_strip_all_tags( $stb_currency_symbol ) );
+} else {
+    $stb_currency_symbol = $stb_currency_code;
+}
+$stb_currency_symbol = sanitize_text_field( trim( $stb_currency_symbol ) );
+
+$stb_currency_position      = sanitize_text_field( (string) get_option( 'woocommerce_currency_pos', 'right' ) );
+$stb_currency_position_attr = strtolower( str_replace( '-', '_', $stb_currency_position ) );
+$stb_rate                   = apply_filters( 'woocs_exchange_value', 1 );
+if ( ! is_numeric( $stb_rate ) || floatval( $stb_rate ) <= 0 ) {
+    $stb_rate = 1;
+}
+$stb_rate = floatval( $stb_rate );
+
+$stb_zero_converted_val  = apply_filters( 'woocs_exchange_value', 0 );
+if ( ! is_numeric( $stb_zero_converted_val ) ) {
+    $stb_zero_converted_val = 0;
+}
+$stb_zero_converted_val = floatval( $stb_zero_converted_val );
+$stb_zero_converted_str = number_format( $stb_zero_converted_val, 6, '.', '' );
+$stb_rate_str            = number_format( $stb_rate, 6, '.', '' );
+$stb_currency_code_clean = strtoupper( $stb_currency_code );
+
+$stb_zero_price_markup = '';
+if ( function_exists( 'wc_price' ) ) {
+    $stb_zero_price_markup = wc_price( $stb_zero_converted_val );
+    $stb_zero_price_markup = preg_replace(
+        '/<span\s+class="woocommerce-Price-amount amount"/i',
+        '<span class="woocommerce-Price-amount amount" data-woocs="price" data-price-base="0" data-price-converted="' . esc_attr( $stb_zero_converted_str ) . '" data-woocs-currency="' . esc_attr( $stb_currency_code_clean ) . '" data-woocs-symbol="' . esc_attr( $stb_currency_symbol ) . '" data-woocs-rate="' . esc_attr( $stb_rate_str ) . '" data-woocs-position="' . esc_attr( $stb_currency_position_attr ) . '"',
+        $stb_zero_price_markup,
+        1
+    );
+} else {
+    $stb_number  = esc_html( number_format_i18n( $stb_zero_converted_val, 2 ) );
+    $stb_symbol  = esc_html( $stb_currency_symbol );
+    $stb_nbsp    = '&nbsp;';
+    $stb_body    = '<bdi>' . $stb_number . $stb_nbsp . '<span class="woocommerce-Price-currencySymbol">' . $stb_symbol . '</span></bdi>';
+    if ( strpos( $stb_currency_position_attr, 'left' ) === 0 ) {
+        $stb_body = '<bdi><span class="woocommerce-Price-currencySymbol">' . $stb_symbol . '</span>' . $stb_nbsp . $stb_number . '</bdi>';
+    }
+    $stb_zero_price_markup = sprintf(
+        '<span class="woocommerce-Price-amount amount" data-woocs="price" data-price-base="0" data-price-converted="%1$s" data-woocs-currency="%2$s" data-woocs-symbol="%3$s" data-woocs-rate="%4$s" data-woocs-position="%5$s">%6$s</span>',
+        esc_attr( $stb_zero_converted_str ),
+        esc_attr( $stb_currency_code_clean ),
+        esc_attr( $stb_currency_symbol ),
+        esc_attr( $stb_rate_str ),
+        esc_attr( $stb_currency_position_attr ),
+        $stb_body
+    );
+}
+
+$stb_zero_net_markup = sprintf(
+    '<span class="stb-price-prefix">%s</span> %s',
+    esc_html__( 'Netto:', 'sticker-builder' ),
+    $stb_zero_price_markup
+);
 ?>
 <div id="stb-root">
     <div class="stb-wrap">
-        <div class="stb-card stb-grid-page">
-            <div class="order-col">
-
-                <section class="list-section">
-                    <span class="label">Rozmiar naklejki</span>
-                    <div id="sizeList" class="opt-list">
-                        <button type="button" class="opt-item" data-w="5" data-h="5" aria-pressed="false">
-                            <div class="opt-line">
-                                <span class="opt-main">5 &times; 5 cm</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
-                            </div>
-                        </button>
-                        <button type="button" class="opt-item" data-w="10" data-h="10" aria-pressed="true">
-                            <div class="opt-line">
-                                <span class="opt-main">10 &times; 10 cm</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
-                            </div>
-                        </button>
-                        <button type="button" class="opt-item" data-w="15" data-h="10" aria-pressed="false">
-                            <div class="opt-line">
-                                <span class="opt-main">15 &times; 10 cm</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
-                            </div>
-                        </button>
-                    </div>
-                    <button type="button" id="sizeCustomToggle" class="opt-toggle">Własny rozmiar</button>
-                    <div id="sizeCustom" class="opt-custom is-hidden">
-                        <div class="stb-inline">
-                            <label class="stb-field">
-                                <span class="stb-lbl">Szerokość (cm)</span>
-                                <input type="number" id="stb-w" min="1" step="0.1" value="10">
-                            </label>
-                            <label class="stb-field">
-                                <span class="stb-lbl">Wysokość (cm)</span>
-                                <input type="number" id="stb-h" min="1" step="0.1" value="10">
-                            </label>
+        <div class="stb-steps">
+            <div class="stb-card stb-step is-active" id="stb-step-1" aria-hidden="false">
+                <div class="order-col">
+                    <section class="list-section">
+                        <span class="label">Rozmiar naklejki</span>
+                        <div id="sizeList" class="opt-list">
+                            <button type="button" class="opt-item" data-w="5" data-h="5" aria-pressed="false">
+                                <div class="opt-line">
+                                    <span class="opt-main">5 &times; 5 cm</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
+                            <button type="button" class="opt-item" data-w="10" data-h="10" aria-pressed="true">
+                                <div class="opt-line">
+                                    <span class="opt-main">10 &times; 10 cm</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
+                            <button type="button" class="opt-item" data-w="15" data-h="10" aria-pressed="false">
+                                <div class="opt-line">
+                                    <span class="opt-main">15 &times; 10 cm</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
                         </div>
-                    </div>
-                </section>
-
-                <section class="list-section">
-                    <span class="label">Nakład</span>
-                    <div id="qtyList" class="opt-list">
-                        <button type="button" class="opt-item" data-qty="10" aria-pressed="false">
-                            <div class="opt-line">
-                                <span class="opt-main">10 sztuk</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
+                        <button type="button" id="sizeCustomToggle" class="opt-toggle">Własny rozmiar</button>
+                        <div id="sizeCustom" class="opt-custom is-hidden">
+                            <div class="stb-inline">
+                                <label class="stb-field">
+                                    <span class="stb-lbl">Szerokość (cm)</span>
+                                    <input type="number" id="stb-w" min="1" step="0.1" value="10">
+                                </label>
+                                <label class="stb-field">
+                                    <span class="stb-lbl">Wysokość (cm)</span>
+                                    <input type="number" id="stb-h" min="1" step="0.1" value="10">
+                                </label>
                             </div>
-                        </button>
-                        <button type="button" class="opt-item" data-qty="50" aria-pressed="false">
-                            <div class="opt-line">
-                                <span class="opt-main">50 sztuk</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
-                            </div>
-                        </button>
-                        <button type="button" class="opt-item" data-qty="100" aria-pressed="true">
-                            <div class="opt-line">
-                                <span class="opt-main">100 sztuk</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
-                            </div>
-                        </button>
-                        <button type="button" class="opt-item" data-qty="200" aria-pressed="false">
-                            <div class="opt-line">
-                                <span class="opt-main">200 sztuk</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
-                            </div>
-                        </button>
-                        <button type="button" class="opt-item" data-qty="1000" aria-pressed="false">
-                            <div class="opt-line">
-                                <span class="opt-main">1000 sztuk</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
-                            </div>
-                        </button>
-                        <button type="button" class="opt-item" data-qty="3000" aria-pressed="false">
-                            <div class="opt-line">
-                                <span class="opt-main">3000 sztuk</span>
-                                <span class="opt-right">
-                                    <span class="opt-price"></span>
-                                    <span class="opt-save"></span>
-                                </span>
-                            </div>
-                        </button>
-                    </div>
-                    <button type="button" id="qtyCustomToggle" class="opt-toggle">Własny nakład</button>
-                    <div id="qtyCustom" class="opt-custom is-hidden">
-                        <div class="stb-inline">
-                            <label class="stb-field">
-                                <span class="stb-lbl">Ilość (szt.)</span>
-                                <input type="number" id="stb-qty" min="1" step="1" value="100">
-                            </label>
-                            <span id="qtyCustomSave" class="opt-save"></span>
                         </div>
-                    </div>
-                </section>
+                    </section>
 
-            </div>
-
-            <div class="price-col price-in-order">
-                <div class="price-box">
-                    <div class="total-val" id="stb-total">0,00 zł</div>
-                    <div class="total-net" id="stb-total-net">Netto: 0,00 zł</div>
-                    <div class="total-save" id="stb-total-save" aria-live="polite"></div>
-                    <div class="total-lead" id="stb-total-lead" aria-live="polite"></div>
+                    <section class="list-section">
+                        <span class="label">Nakład</span>
+                        <div id="qtyList" class="opt-list">
+                            <button type="button" class="opt-item" data-qty="10" aria-pressed="false">
+                                <div class="opt-line">
+                                    <span class="opt-main">10 sztuk</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
+                            <button type="button" class="opt-item" data-qty="50" aria-pressed="false">
+                                <div class="opt-line">
+                                    <span class="opt-main">50 sztuk</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
+                            <button type="button" class="opt-item" data-qty="100" aria-pressed="true">
+                                <div class="opt-line">
+                                    <span class="opt-main">100 sztuk</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
+                            <button type="button" class="opt-item" data-qty="200" aria-pressed="false">
+                                <div class="opt-line">
+                                    <span class="opt-main">200 sztuk</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
+                            <button type="button" class="opt-item" data-qty="1000" aria-pressed="false">
+                                <div class="opt-line">
+                                    <span class="opt-main">1000 sztuk</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
+                            <button type="button" class="opt-item" data-qty="3000" aria-pressed="false">
+                                <div class="opt-line">
+                                    <span class="opt-main">3000 sztuk</span>
+                                    <span class="opt-right">
+                                        <span class="opt-price"></span>
+                                        <span class="opt-save"></span>
+                                    </span>
+                                </div>
+                            </button>
+                        </div>
+                        <button type="button" id="qtyCustomToggle" class="opt-toggle">Własny nakład</button>
+                        <div id="qtyCustom" class="opt-custom is-hidden">
+                            <div class="stb-inline">
+                                <label class="stb-field">
+                                    <span class="stb-lbl">Ilość (szt.)</span>
+                                    <input type="number" id="stb-qty" min="1" step="1" value="100">
+                                </label>
+                                <span id="qtyCustomSave" class="opt-save"></span>
+                            </div>
+                        </div>
+                    </section>
                 </div>
-                <div class="cta">
-                    <button type="button" class="btn" id="stb-open-modal">Otwórz kreator</button>
-                    <button type="button" class="btn btn-primary" id="stb-add">Dodaj do koszyka</button>
+                <div class="step-price-panel">
+                    <div class="price-box" data-stb-price-box>
+                        <div class="total-val" id="stb-total" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
+                        <div class="total-net" id="stb-total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
+                        <div class="total-save" id="stb-total-save" data-stb-total-save aria-live="polite"></div>
+                    </div>
+                </div>
+                <div class="step-footer">
+                    <button type="button" class="btn btn-primary btn-step" id="stb-step1-next">Dalej</button>
                 </div>
             </div>
+
+            <div class="stb-card stb-step" id="stb-step-2" aria-hidden="true">
+                <div class="step-content">
+                    <header class="step-header">
+                        <button type="button" class="step-back-link" id="stb-step2-back">Wróć do parametrów</button>
+                        <h2 class="step-title">Projekt naklejki</h2>
+                    </header>
+                    <div class="step-options">
+                        <button type="button" class="btn btn-primary btn-step" id="stb-upload-trigger">
+                            <span class="btn-step-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                    <path d="M12 16V5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                                    <path d="M8 9l4-4 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                                    <path d="M5 16v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                                </svg>
+                            </span>
+                            <span class="btn-step-label">Wgraj</span>
+                        </button>
+                        <button type="button" class="btn btn-primary btn-step" id="stb-open-modal">
+                            <span class="btn-step-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                    <path d="M6 18l2-5 10-10 3 3-10 10-5 2z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"></path>
+                                    <path d="M14 4l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+                                    <path d="M5 19l4-1-3-3-1 4z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+                                </svg>
+                            </span>
+                            <span class="btn-step-label">Kreator</span>
+                        </button>
+                    </div>
+                    <p class="step-file-info" id="stb-upload-summary">Brak pliku</p>
+                    <div class="cta">
+                        <button type="button" class="btn btn-primary btn-step" id="stb-add">Dalej</button>
+                    </div>
+                    <div class="step-summary">
+                        <p class="price-timer" data-stb-price-timer aria-live="polite"></p>
+                        <div class="price-box" data-stb-price-box>
+                            <div class="total-val" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
+                            <div class="total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
+                            <div class="total-save" data-stb-total-save aria-live="polite"></div>
+                            <div class="total-lead" data-stb-total-lead aria-live="polite"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         <div class="designer stb-card">
@@ -457,47 +571,6 @@ if ( ! defined( 'ABSPATH' ) ) {
                     <div class="canvas-box">
                         <canvas id="stb-canvas" width="520" height="520" aria-label="Podgląd naklejki"></canvas>
                     </div>
-                    <div class="stb-mini-summary">
-                        <div class="sum-left">
-                            <div class="sum-section">
-                                <button type="button" class="sum-link" id="sum-dims">Wymiary: <strong>10 &times; 10 cm</strong></button>
-                                <div id="sum-edit-size" class="sum-edit is-hidden">
-                                    <div class="stb-inline">
-                                        <label class="stb-field">
-                                            <span class="stb-lbl">Szerokość (cm)</span>
-                                            <input type="number" id="sum-w" min="1" step="0.1" value="10">
-                                        </label>
-                                        <label class="stb-field">
-                                            <span class="stb-lbl">Wysokość (cm)</span>
-                                            <input type="number" id="sum-h" min="1" step="0.1" value="10">
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="sum-section">
-                                <button type="button" class="sum-link" id="sum-qty">Nakład: <strong>100 szt.</strong></button>
-                                <div id="sum-edit-qty" class="sum-edit is-hidden">
-                                    <label class="stb-field">
-                                        <span class="stb-lbl">Ilość (szt.)</span>
-                                        <input type="number" id="sum-qty-inp" min="1" step="1" value="100">
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="sum-meta">
-                                <span id="sum-shape">Kształt: Prostokąt</span>
-                                <span id="sum-material">Materiał: Folia ekonomiczna</span>
-                                <span id="sum-laminate">Laminat: nie</span>
-                                <span id="sum-leadtime">Wysyłka: wkrótce</span>
-                            </div>
-                        </div>
-                        <div class="sum-right">
-                            <div class="sum-total" id="sum-total">0,00 zł</div>
-                            <div class="sum-net" id="sum-net">Netto: 0,00 zł</div>
-                        </div>
-                        <div class="sum-cta">
-                            <button type="button" class="btn btn-primary" id="stb-add-modal">Dodaj do koszyka</button>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -508,5 +581,14 @@ if ( ! defined( 'ABSPATH' ) ) {
     <div class="stb-modal__backdrop" data-close></div>
     <div class="stb-modal__content">
         <button type="button" class="btn stb-modal__close" id="stb-close-modal">✕</button>
+        <div class="stb-modal__summary">
+            <p class="price-timer" data-stb-price-timer aria-live="polite"></p>
+            <div class="price-box" data-stb-price-box>
+                <div class="total-val" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
+                <div class="total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
+                <div class="total-save" data-stb-total-save aria-live="polite"></div>
+                <div class="total-lead" data-stb-total-lead aria-live="polite"></div>
+            </div>
+        </div>
     </div>
 </div>
