@@ -59,26 +59,18 @@
 #stb-root #stb-step-2 .step-options{ display:grid; gap:16px }
 #stb-root #stb-step-2 .step-options .btn-step{ justify-content:center }
 #stb-root #stb-step-2 .step-file-info{ margin:0; font-size:.85rem; color:var(--muted); font-weight:500; text-align:center }
-#stb-root #stb-step-2 .price-timer{ margin:0; font-size:.78rem; color:var(--muted); text-align:center; font-weight:500; letter-spacing:.01em; }
-#stb-root #stb-step-2 .price-timer:empty{ display:none; }
-#stb-root #stb-step-2 .price-box{ width:100%; justify-items:center; align-items:center; margin-top:0; gap:10px }
-#stb-root #stb-step-2 .total-lead{ display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 12px; }
-#stb-root #stb-step-2 .total-lead::before{
-  content:"";
-  width:18px;
-  height:14px;
-  flex:0 0 auto;
-  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='5' width='18' height='14' rx='3' ry='3' fill='none' stroke='%234b8cff' stroke-width='2'/%3E%3Cpath d='M4 6l8 7 8-7' fill='none' stroke='%234b8cff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center/contain;
-}
-#stb-root #stb-step-2 .total-val,
-#stb-root #stb-step-2 .total-net,
-#stb-root #stb-step-2 .total-save,
-#stb-root #stb-step-2 .total-lead{ text-align:center }
-#stb-root #stb-step-2 .total-net{ padding-left:18px; padding-right:18px }
 #stb-root #stb-step-2 .cta{ justify-content:center }
 
 @media (max-width:640px){
   #stb-root #stb-step-1 .order-col{ padding:18px; }
+  #stb-root .step-price-panel{ padding:0 18px 18px; justify-items:center; }
+  #stb-root .step-price-panel .price-box{ justify-items:center; }
+  #stb-root .step-price-panel .price-timer{ text-align:center; }
+  #stb-root .step-price-panel .total-val,
+  #stb-root .step-price-panel .total-net,
+  #stb-root .step-price-panel .total-save,
+  #stb-root .step-price-panel .total-lead{ text-align:center; }
+  #stb-root .step-price-panel .total-lead{ justify-content:center; }
   #stb-root .stb-step .step-footer{ padding:12px 18px 18px; }
   #stb-root #stb-step-2 .step-content{ padding:18px; }
   #stb-root #stb-step-2 .step-title{ font-size:1.28rem; }
@@ -294,7 +286,22 @@
 }
 
 /* ===== CENA (na stronie) ===== */
-#stb-root .price-col{ padding:14px; display:grid; gap:10px }
+#stb-root .step-price-panel{
+  padding:0 24px 24px;
+  display:grid;
+  gap:12px;
+  justify-items:end;
+}
+#stb-root .step-price-panel .price-timer{
+  margin:0;
+  font-size:.78rem;
+  color:var(--muted);
+  text-align:right;
+  font-weight:500;
+  letter-spacing:.01em;
+}
+#stb-root .step-price-panel .price-timer:empty{ display:none; }
+#stb-root .step-price-panel .price-box{ justify-items:end; width:100%; }
 #stb-root .price-box{
   border:1px solid var(--line);
   border-radius:14px;
@@ -312,18 +319,40 @@
   text-align:right;
 }
 #stb-root .total-net{
-  font-size:1.05rem;
-  font-weight:700;
-  color:#35508a;
+  font-size:.95rem;
+  font-weight:500;
+  color:var(--muted);
   text-align:right;
-  background:rgba(45,127,249,.12);
-  padding:6px 14px;
-  border-radius:999px;
   letter-spacing:.01em;
   white-space:nowrap;
+  padding:0;
+  margin-top:-2px;
 }
-#stb-root .total-save{ font-size:.82rem; color:var(--accent); text-align:right; font-weight:700; text-transform:uppercase; letter-spacing:.03em; }
-#stb-root .total-lead{ font-size:.82rem; color:var(--muted); text-align:right; }
+#stb-root .total-net .stb-price-prefix{ font-weight:600; color:inherit; }
+#stb-root .total-save{
+  font-size:.82rem;
+  color:var(--accent);
+  text-align:right;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.03em;
+}
+#stb-root .total-lead{
+  font-size:.82rem;
+  color:var(--muted);
+  text-align:right;
+  display:inline-flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:6px;
+}
+#stb-root .total-lead::before{
+  content:"";
+  width:18px;
+  height:14px;
+  flex:0 0 auto;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='5' width='18' height='14' rx='3' ry='3' fill='none' stroke='%234b8cff' stroke-width='2'/%3E%3Cpath d='M4 6l8 7 8-7' fill='none' stroke='%234b8cff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center/contain;
+}
 #stb-root .total-save:empty,
 #stb-root .total-lead:empty{ display:none; }
 #stb-root .cta{ display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap }
@@ -449,6 +478,29 @@
   background:#fff; overflow:auto; -webkit-overflow-scrolling:touch;
   overscroll-behavior-y:contain;
 }
+.stb-modal__summary{
+  padding:24px 24px 16px;
+  display:grid;
+  gap:12px;
+  justify-items:center;
+  border-bottom:1px solid var(--line);
+  background:linear-gradient(135deg, rgba(237,242,255,.75), rgba(255,255,255,.95));
+}
+.stb-modal__summary .price-box{ justify-items:center; width:100%; max-width:360px; }
+.stb-modal__summary .price-timer{
+  margin:0;
+  font-size:.78rem;
+  color:var(--muted);
+  text-align:center;
+  font-weight:500;
+  letter-spacing:.01em;
+}
+.stb-modal__summary .price-timer:empty{ display:none; }
+.stb-modal__summary .total-val,
+.stb-modal__summary .total-net,
+.stb-modal__summary .total-save,
+.stb-modal__summary .total-lead{ text-align:center; justify-self:center; }
+.stb-modal__summary .total-lead{ justify-content:center; }
 .stb-modal__close{ position:absolute; top:12px; right:12px; z-index:2; border-color:var(--line) !important }
 body.stb-lock{ overflow:hidden }
 

@@ -196,6 +196,15 @@ $stb_zero_net_markup = sprintf(
                         </div>
                     </section>
                 </div>
+                <div class="step-price-panel">
+                    <p class="price-timer" id="stb-price-timer" data-stb-price-timer aria-live="polite"></p>
+                    <div class="price-box" data-stb-price-box>
+                        <div class="total-val" id="stb-total" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
+                        <div class="total-net" id="stb-total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
+                        <div class="total-save" id="stb-total-save" data-stb-total-save aria-live="polite"></div>
+                        <div class="total-lead" id="stb-total-lead" data-stb-total-lead aria-live="polite"></div>
+                    </div>
+                </div>
                 <div class="step-footer">
                     <button type="button" class="btn btn-primary btn-step" id="stb-step1-next">Dalej</button>
                 </div>
@@ -212,13 +221,6 @@ $stb_zero_net_markup = sprintf(
                         <button type="button" class="btn btn-primary btn-step" id="stb-open-modal">Stwórz w kreatorze</button>
                     </div>
                     <p class="step-file-info" id="stb-upload-summary">Brak pliku</p>
-                    <p class="price-timer" id="stb-price-timer" aria-live="polite"></p>
-                    <div class="price-box">
-                        <div class="total-val" id="stb-total"><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
-                        <div class="total-net" id="stb-total-net"><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
-                        <div class="total-save" id="stb-total-save" aria-live="polite"></div>
-                        <div class="total-lead" id="stb-total-lead" aria-live="polite"></div>
-                    </div>
                     <div class="cta">
                         <button type="button" class="btn btn-primary btn-step" id="stb-add">Dalej</button>
                     </div>
@@ -554,5 +556,14 @@ $stb_zero_net_markup = sprintf(
     <div class="stb-modal__backdrop" data-close></div>
     <div class="stb-modal__content">
         <button type="button" class="btn stb-modal__close" id="stb-close-modal">✕</button>
+        <div class="stb-modal__summary">
+            <p class="price-timer" data-stb-price-timer aria-live="polite"></p>
+            <div class="price-box" data-stb-price-box>
+                <div class="total-val" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
+                <div class="total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
+                <div class="total-save" data-stb-total-save aria-live="polite"></div>
+                <div class="total-lead" data-stb-total-lead aria-live="polite"></div>
+            </div>
+        </div>
     </div>
 </div>

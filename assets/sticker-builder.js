@@ -248,11 +248,11 @@
     const qtyEl  = byId('stb-qty');
     const qtyCustomSave = byId('qtyCustomSave');
 
-    const totalOut    = byId('stb-total');
-    const totalNetOut = byId('stb-total-net');
-    const totalSaveOut= byId('stb-total-save');
-    const totalLeadOut= byId('stb-total-lead');
-    const priceTimerEl= byId('stb-price-timer');
+    const totalOutEls     = $$('[data-stb-total]');
+    const totalNetOutEls  = $$('[data-stb-total-net]');
+    const totalSaveOutEls = $$('[data-stb-total-save]');
+    const totalLeadOutEls = $$('[data-stb-total-lead]');
+    const priceTimerEls   = $$('[data-stb-price-timer]');
     const addBtn      = byId('stb-add');
 
     const step1       = byId('stb-step-1');
@@ -377,7 +377,7 @@
 
     showStep(currentStep || 1);
 
-    if (priceTimerEl){
+    if (priceTimerEls.length){
       window.addEventListener('beforeunload', stopPriceTimer, { once:true });
     }
 
@@ -2197,7 +2197,7 @@
     }
 
     function updatePriceTimerDisplay(){
-      if (!priceTimerEl) return;
+      if (!priceTimerEls.length) return;
       if (!priceTimerDeadline){
         priceTimerDeadline = Date.now() + PRICE_TIMER_DURATION;
       }
@@ -2214,11 +2214,12 @@
       const current = new Date();
       const dateStr = formatPLDateOnly(current);
       const timeStr = formatPLTimeOnly(current);
-      priceTimerEl.textContent = 'Aktualne przez ' + countdown + ' • ' + dateStr + ', ' + timeStr;
+      const text = 'Aktualne przez ' + countdown + ' • ' + dateStr + ', ' + timeStr;
+      priceTimerEls.forEach((el)=>{ el.textContent = text; });
     }
 
     function restartPriceTimer(){
-      if (!priceTimerEl) return;
+      if (!priceTimerEls.length) return;
       priceTimerDeadline = Date.now() + PRICE_TIMER_DURATION;
       updatePriceTimerDisplay();
       if (!priceTimerInterval){
@@ -2244,7 +2245,7 @@
       const target = addBusinessDays(new Date(), days);
       const leadText = 'Wysyłka do ' + formatPLDateOnly(target);
       if (sumLeadtimeEl) sumLeadtimeEl.textContent = leadText;
-      if (totalLeadOut) totalLeadOut.textContent = leadText;
+      totalLeadOutEls.forEach((el)=>{ el.textContent = leadText; });
     }
 
     // popup do wyceny
@@ -2318,13 +2319,14 @@
       }
 
       if (calc.total_area >= 100){
-        if (totalOut) clearWooPrice(totalOut, 'WYCENA INDYWIDUALNA');
-        if (totalNetOut) clearWooPrice(totalNetOut, '');
+        totalOutEls.forEach((el)=> clearWooPrice(el, 'WYCENA INDYWIDUALNA'));
+        totalNetOutEls.forEach((el)=> clearWooPrice(el, ''));
       } else {
-        if (totalOut) renderWooPrice(totalOut, calc.total);
-        if (totalNetOut) renderWooPrice(totalNetOut, calc.net, { prefix: 'Netto:' });
+        totalOutEls.forEach((el)=> renderWooPrice(el, calc.total));
+        totalNetOutEls.forEach((el)=> renderWooPrice(el, calc.net, { prefix: 'Netto:' }));
       }
-      if (totalSaveOut) totalSaveOut.textContent = (pctSave >= 0.5) ? ('Oszczędzasz ' + Math.round(pctSave) + '%') : '';
+      const saveText = (pctSave >= 0.5) ? ('Oszczędzasz ' + Math.round(pctSave) + '%') : '';
+      totalSaveOutEls.forEach((el)=>{ el.textContent = saveText; });
 
       const w_cm=parseNum(wEl,10), h_cm=parseNum(hEl,10);
       if (sumDims)  sumDims.textContent = `${(w_cm).toString().replace('.',',')} × ${(h_cm).toString().replace('.',',')} cm`;
