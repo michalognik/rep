@@ -133,6 +133,9 @@
     }
     const FIELD = 'stb_payload';
     const CART_URL = (window.STB_CART_URL || '');
+    const uploadConfig = window.STB_UPLOAD || {};
+    const parsedUploadLimit = Number(uploadConfig.max_upload_bytes);
+    const MAX_UPLOAD_BYTES = (Number.isFinite(parsedUploadLimit) && parsedUploadLimit > 0) ? parsedUploadLimit : (25 * 1024 * 1024);
 
     const PDFLib = window.PDFLib || null;         // eksport PDF
     const QRCodeLib = window.QRCode || null;      // davidshimjs
@@ -262,6 +265,138 @@
     const step2Back   = byId('stb-step2-back');
     const uploadTrigger = byId('stb-upload-trigger');
     const uploadSummary = byId('stb-upload-summary');
+
+    const uploadLockEls = [imgEl, upBtn, delBtn, addBtn, step1Next, step2Back].filter(Boolean);
+    let activeUploadXhr = null;
+
+    function setUploadBusy(busy){
+      uploadLockEls.forEach(el => {
+        if (!el) return;
+        if ('disabled' in el){
+          if (busy){
+            el.dataset.stbWasDisabled = el.disabled ? '1' : '0';
+            el.disabled = true;
+          } else {
+            if (el.dataset.stbWasDisabled === '1'){
+              el.disabled = true;
+            } else {
+              el.disabled = false;
+            }
+            delete el.dataset.stbWasDisabled;
+          }
+        }
+        if (el.classList){
+          if (busy){ el.classList.add('is-loading'); } else { el.classList.remove('is-loading'); }
+        }
+      });
+      if (uploadTrigger){
+        if (busy){
+          uploadTrigger.classList.add('is-disabled');
+          uploadTrigger.setAttribute('aria-disabled', 'true');
+        } else {
+          uploadTrigger.classList.remove('is-disabled');
+          uploadTrigger.removeAttribute('aria-disabled');
+        }
+      }
+    }
+
+    function abortActiveUpload(options={}){
+      if (activeUploadXhr){
+        if (options.silent){ activeUploadXhr.__stbSilentAbort = true; }
+        try { activeUploadXhr.abort(); } catch(err){}
+      }
+    }
+
+    function uploadMessage(msg){
+      if (!uploadSummary) return;
+      if (typeof msg === 'string'){ uploadSummary.textContent = msg; }
+    }
+
+    function uploadFileToServer(file){
+      if (!uploadConfig || !uploadConfig.ajax_url){
+        uploadMessage('Brak konfiguracji przesyłania plików.');
+        return Promise.resolve(null);
+      }
+
+      abortActiveUpload({ silent:true });
+
+      return new Promise((resolve)=>{
+        const xhr = new XMLHttpRequest();
+        activeUploadXhr = xhr;
+        xhr.open('POST', String(uploadConfig.ajax_url), true);
+        xhr.responseType = 'json';
+        xhr.timeout = 5 * 60 * 1000; // 5 minut
+
+        const finalize = (result) => {
+          if (activeUploadXhr === xhr){ activeUploadXhr = null; }
+          setUploadBusy(false);
+          resolve(result);
+        };
+
+        xhr.upload.onprogress = (ev)=>{
+          if (!uploadSummary) return;
+          if (ev && ev.lengthComputable){
+            const pct = Math.round((ev.loaded / Math.max(1, ev.total)) * 100);
+            uploadSummary.textContent = `Wysyłanie pliku… ${pct}%`;
+          } else {
+            uploadSummary.textContent = 'Wysyłanie pliku…';
+          }
+        };
+
+        const handleError = (message, silent=false)=>{
+          if (!silent){
+            uploadMessage(message || 'Nie udało się przesłać pliku.');
+          }
+          finalize(null);
+        };
+
+        xhr.onload = ()=>{
+          let response = xhr.response;
+          if (!response && xhr.responseText){
+            try { response = JSON.parse(xhr.responseText); } catch(err){}
+          }
+
+          if (xhr.status >= 200 && xhr.status < 300 && response && response.success && response.data){
+            const data = response.data || {};
+            finalize({
+              uploadId: Number.isFinite(Number(data.id)) ? Number(data.id) : 0,
+              url: typeof data.url === 'string' ? data.url : '',
+              size: Number.isFinite(Number(data.size)) ? Number(data.size) : (file?.size || 0),
+              type: typeof data.type === 'string' ? data.type : (file?.type || ''),
+              name: typeof data.name === 'string' ? data.name : (file?.name || ''),
+            });
+            return;
+          }
+
+          const silent = !!xhr.__stbSilentAbort;
+          const message = response?.data?.message || response?.message || (xhr.status === 413 ? 'Plik jest zbyt duży.' : null);
+          handleError(message || 'Nie udało się przesłać pliku.', silent);
+        };
+
+        xhr.onerror = ()=>{
+          const silent = !!xhr.__stbSilentAbort;
+          handleError('Błąd połączenia podczas przesyłania pliku.', silent);
+        };
+
+        xhr.onabort = ()=>{
+          const silent = !!xhr.__stbSilentAbort;
+          handleError(silent ? '' : 'Przesyłanie pliku przerwane.', silent);
+        };
+
+        xhr.ontimeout = ()=>{
+          handleError('Limit czasu przesyłania pliku został przekroczony.');
+        };
+
+        const formData = new FormData();
+        formData.append('action', 'stb_upload_file');
+        if (uploadConfig.nonce){ formData.append('nonce', uploadConfig.nonce); }
+        formData.append('stb_file', file, file?.name || 'upload');
+
+        setUploadBusy(true);
+        uploadMessage('Rozpoczynam przesyłanie pliku…');
+        xhr.send(formData);
+      });
+    }
 
     const hasSvgElement = typeof SVGElement !== 'undefined';
 
@@ -445,7 +580,7 @@
 
     /* ===== Stan ===== */
     const parseNum = (elOrVal, def) => { const v=(typeof elOrVal==='number')?elOrVal:parseFloat(elOrVal?.value); return (isFinite(v)&&v>0)?v:def; };
-    let uploaded = { name:null, type:null, size:0, dataURL:null, img:null, pdf:null };
+    let uploaded = { name:null, type:null, size:0, dataURL:null, img:null, pdf:null, uploadId:null, url:null, uploadBytes:0 };
     let transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 }; // GRAFIKA
     let cornerFactor = 0.04; // 4%
     let gridOn = false;
@@ -1692,15 +1827,24 @@
       if (!fMeta) return;
       fMeta.textContent = prettyMeta(pxW, pxH, mime, sizeBytes, extra);
     }
-    function clearImage(){
-      uploaded={ name:null, type:null, size:0, dataURL:null, img:null, pdf:null };
+    function clearImage(arg){
+      const isEvent = arg && typeof arg === 'object' && typeof arg.preventDefault === 'function';
+      if (isEvent){ try { arg.preventDefault(); } catch(err){} }
+      const options = (!isEvent && arg && typeof arg === 'object') ? arg : {};
+      const keepSummary = !!options.keepSummary;
+
+      abortActiveUpload({ silent:true });
+      setUploadBusy(false);
+
+      uploaded = { name:null, type:null, size:0, dataURL:null, img:null, pdf:null, uploadId:null, url:null, uploadBytes:0 };
       if (imgEl) imgEl.value='';
       if (fName) fName.textContent='brak pliku';
-      if (uploadSummary) uploadSummary.textContent='Brak pliku';
+      if (uploadSummary && !keepSummary) uploadSummary.textContent='Brak pliku';
       if (fMeta) fMeta.textContent='';
       transform={scale:1,offsetX:0,offsetY:0,rotDeg:0};
       if (lastToolTarget === 'image') setToolTarget(null);
       requestDraw();
+      updatePriceAndJSON();
     }
     if (upBtn){
       upBtn.addEventListener('click', ()=> imgEl && imgEl.click());
@@ -1712,8 +1856,7 @@
       const f = e.target.files && e.target.files[0];
       if (!f){ clearImage(); return; }
       const name = f.name || '';
-      if (fName) fName.textContent = name;
-      if (uploadSummary) uploadSummary.textContent = name;
+      if (fName) fName.textContent = name || 'brak pliku';
 
       // jeśli diecut — tylko PNG z przezroczystością
       if (shape==='diecut'){
@@ -1725,17 +1868,47 @@
         }
       }
 
-      // PDF preview via PDF.js (first page)
+      const limitBytes = (Number.isFinite(MAX_UPLOAD_BYTES) && MAX_UPLOAD_BYTES > 0) ? MAX_UPLOAD_BYTES : null;
+      if (limitBytes && Number.isFinite(f.size) && f.size > limitBytes){
+        clearImage({ keepSummary:true });
+        if (uploadSummary){
+          const limitLabel = prettyBytes(limitBytes);
+          const sizeLabel = prettyBytes(f.size || 0);
+          uploadSummary.innerHTML = `Plik ma ${sizeLabel} i przekracza limit ${limitLabel}.<br>Większe pliki prześlij proszę przez <a href="https://wetransfer.com/" target="_blank" rel="noopener">WeTransfer</a> i dołącz link w uwagach do zamówienia.`;
+        }
+        return;
+      }
+
       const isPDF = (f.type && f.type.toLowerCase().includes('pdf')) || /\.pdf$/i.test(name);
       if (isPDF){
         if (shape==='diecut'){
           alert('Tryb DIECUT wspiera tylko PNG z przezroczystością.');
-          clearImage(); return;
+          clearImage();
+          return;
         }
         if (!window.pdfjsLib || typeof window.pdfjsLib.getDocument!=='function'){
           alert('Podgląd PDF wymaga PDF.js (brak biblioteki).');
-          clearImage(); return;
+          clearImage();
+          return;
         }
+      }
+
+      const uploadInfo = await uploadFileToServer(f);
+      if (!uploadInfo){
+        clearImage({ keepSummary:true });
+        return;
+      }
+
+      const uploadedSize = uploadInfo.size || f.size || 0;
+      const uploadedType = uploadInfo.type || f.type || '';
+      const uploadedUrl  = uploadInfo.url || '';
+      const uploadedId   = uploadInfo.uploadId || 0;
+
+      if (uploadSummary){
+        uploadSummary.textContent = `${name || 'Plik'} • ${prettyBytes(uploadedSize)}`;
+      }
+
+      if (isPDF){
         try{
           const buf = await f.arrayBuffer();
           const pdfTask = window.pdfjsLib.getDocument({ data: new Uint8Array(buf) });
@@ -1751,11 +1924,22 @@
           const dataURL = c.toDataURL('image/png');
           const img = new Image();
           img.onload = ()=>{
-            uploaded = { name, type:(f.type||'application/pdf'), size:(f.size||0), dataURL, img, pdf:{ numPages: pdf.numPages||1 } };
+            uploaded = {
+              name,
+              type:(uploadedType || 'application/pdf'),
+              size:uploadedSize,
+              dataURL,
+              img,
+              pdf:{ numPages: pdf.numPages||1 },
+              uploadId:uploadedId,
+              url:uploadedUrl,
+              uploadBytes:uploadedSize
+            };
             transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
-            updateFileMeta(c.width, c.height, (f.type||'application/pdf'), (f.size||0), `PDF • ${pdf.numPages||1} str.`);
+            updateFileMeta(c.width, c.height, (uploadedType || 'application/pdf'), uploadedSize, `PDF • ${pdf.numPages||1} str.`);
             setToolTarget('image');
             requestDraw();
+            updatePriceAndJSON();
           };
           img.src = dataURL;
         }catch(err){
@@ -1766,17 +1950,27 @@
         return;
       }
 
-      // Image / SVG / PNG
       const rd = new FileReader();
       rd.onload = (ev)=>{
         const dataURL = String(ev.target.result);
         const img = new Image();
         img.onload = ()=>{
-          uploaded = { name, type:(f.type||''), size:(f.size||0), dataURL, img, pdf:null };
+          uploaded = {
+            name,
+            type:(uploadedType || ''),
+            size:uploadedSize,
+            dataURL,
+            img,
+            pdf:null,
+            uploadId:uploadedId,
+            url:uploadedUrl,
+            uploadBytes:uploadedSize
+          };
           transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
-          updateFileMeta(img.naturalWidth||img.width, img.naturalHeight||img.height, (f.type||''), (f.size||0));
+          updateFileMeta(img.naturalWidth||img.width, img.naturalHeight||img.height, (uploadedType || ''), uploadedSize);
           setToolTarget('image');
           requestDraw();
+          updatePriceAndJSON();
         };
         img.src = dataURL;
       };
@@ -2404,7 +2598,7 @@
           total_price_net_pln: +calc.net.toFixed(2),
           material: (materialEl && materialEl.value) ? materialEl.value : 'Folia ekonomiczna',
           laminate: !!(laminateEl && laminateEl.checked),
-          file: uploaded.name ? { name: uploaded.name, type: uploaded.type, size: uploaded.size } : null,
+          file: uploaded.name ? { name: uploaded.name, type: uploaded.type, size: uploaded.size, url: uploaded.url || null, upload_id: uploaded.uploadId || null } : null,
           text: {
             value: textObj.text || '',
             font: textObj.font || 'Inter',
@@ -2433,6 +2627,9 @@
           },
           preview_png: safePreview()
         };
+        if (uploaded.uploadId){ payload.file_upload_id = uploaded.uploadId; }
+        if (uploaded.url){ payload.file_url = uploaded.url; }
+        if (uploaded.uploadBytes){ payload.file_upload_size = uploaded.uploadBytes; }
         hidden.value = JSON.stringify(payload);
       }
     }
