@@ -3,7 +3,134 @@
     "use strict";
 
     /* ===== Konfiguracja/zgodność ===== */
-    const CURR = (window.STB_CURR) || { code:'PLN', rate:1, symbol:'zł', position:'right', locale:'pl-PL' };
+    const DEFAULT_CURRENCY = { code:'PLN', rate:1, symbol:'zł', position:'right', locale:'pl-PL' };
+
+    function parseRateValue(rawRate){
+      if (rawRate == null) return null;
+      if (typeof rawRate === 'number' && Number.isFinite(rawRate) && rawRate > 0){
+        return rawRate;
+      }
+      if (typeof rawRate === 'string'){
+        const normalized = rawRate.replace(',', '.').trim();
+        if (!normalized) return null;
+        const parsed = parseFloat(normalized);
+        if (Number.isFinite(parsed) && parsed > 0){
+          return parsed;
+        }
+      }
+      return null;
+    }
+
+    function mergeCurrency(base, patch){
+      if (!patch || typeof patch !== 'object') return base;
+      const out = { ...base };
+      if (typeof patch.code === 'string' && patch.code){ out.code = patch.code.toUpperCase(); }
+      if (typeof patch.currency === 'string' && patch.currency){ out.code = patch.currency.toUpperCase(); }
+      if (typeof patch.symbol === 'string' && patch.symbol){ out.symbol = patch.symbol; }
+      if (typeof patch.currency_symbol === 'string' && patch.currency_symbol){ out.symbol = patch.currency_symbol; }
+      if (typeof patch.symbol_left === 'string' && patch.symbol_left){ out.symbol = patch.symbol_left; out.position = 'left'; }
+      if (typeof patch.symbol_right === 'string' && patch.symbol_right){ out.symbol = patch.symbol_right; out.position = 'right'; }
+      if (typeof patch.position === 'string' && patch.position){ out.position = patch.position; }
+      if (typeof patch.currency_pos === 'string' && patch.currency_pos){ out.position = patch.currency_pos; }
+      if (typeof patch.locale === 'string' && patch.locale){ out.locale = patch.locale; }
+      if (typeof patch.lang === 'string' && patch.lang){ out.locale = patch.lang; }
+      const rate = parseRateValue(patch.rate != null ? patch.rate : patch.multiplier != null ? patch.multiplier : patch.currency_rate);
+      if (rate) out.rate = rate;
+      return out;
+    }
+
+    function pickWoocsCurrency(){
+      const win = window;
+      const woocs = win.WOOCS || win.woocs_params || {};
+      const result = {};
+
+      const code = [
+        win.WOOCS_CURRENT_CURRENCY,
+        win.woocs_current_currency,
+        woocs.current_currency,
+        woocs.currency,
+        woocs.currency_code,
+        woocs.default_currency
+      ].find(val => typeof val === 'string' && val.trim().length);
+      if (code){ result.code = code.trim().toUpperCase(); }
+
+      const symbol = [
+        win.WOOCS_CURRENT_SYMBOL,
+        win.woocs_current_currency_symbol,
+        woocs.currency_symbol,
+        woocs.symbol,
+        woocs.symbol_left,
+        woocs.symbol_right
+      ].find(val => typeof val === 'string' && val.trim().length);
+      if (symbol){ result.symbol = symbol; }
+
+      const position = [
+        win.WOOCS_CURRENT_POSITION,
+        win.woocs_current_currency_position,
+        woocs.currency_pos,
+        woocs.position
+      ].find(val => typeof val === 'string' && val.trim().length);
+      if (position){ result.position = position; }
+
+      const locale = [ woocs.locale, woocs.lang, woocs.language ].find(val => typeof val === 'string' && val.trim().length);
+      if (locale){ result.locale = locale; }
+
+      let rate = parseRateValue(
+        win.woocs_current_currency_rate != null ? win.woocs_current_currency_rate :
+        win.WOOCS_CURRENT_RATE != null ? win.WOOCS_CURRENT_RATE :
+        win.WOOCS_RATE
+      );
+
+      const codeForRate = result.code;
+      const rateMaps = [
+        win.woocs_currency_rates,
+        win.WOOCS_RATES,
+        woocs.currency_rates,
+        woocs.rates,
+        (document.body && document.body.dataset ? document.body.dataset : null)
+      ];
+
+      if (!rate && codeForRate){
+        for (const map of rateMaps){
+          if (!map) continue;
+          let fromMap = map[codeForRate];
+          if (fromMap == null && typeof codeForRate === 'string'){
+            const lower = codeForRate.toLowerCase();
+            const upper = codeForRate.toUpperCase();
+            if (lower !== codeForRate){ fromMap = map[lower]; }
+            if (fromMap == null && upper !== codeForRate){ fromMap = map[upper]; }
+          }
+          const parsed = parseRateValue(fromMap);
+          if (parsed){ rate = parsed; break; }
+        }
+      }
+
+      if (rate){ result.rate = rate; }
+
+      if (!result.symbol && woocs.currencies && codeForRate && typeof woocs.currencies === 'object'){
+        const curr = woocs.currencies[codeForRate];
+        if (curr){
+          if (curr.symbol){ result.symbol = curr.symbol; }
+          if (curr.symbol_left){ result.symbol = curr.symbol_left; result.position = 'left'; }
+          if (curr.symbol_right){ result.symbol = curr.symbol_right; result.position = 'right'; }
+          if (!result.position && typeof curr.position === 'string' && curr.position){ result.position = curr.position; }
+          if (!rate && curr.rate != null){
+            const fromCurr = parseRateValue(curr.rate);
+            if (fromCurr){ rate = fromCurr; result.rate = rate; }
+          }
+        }
+      }
+
+      return result;
+    }
+
+    function currentCurrency(){
+      let curr = { ...DEFAULT_CURRENCY };
+      curr = mergeCurrency(curr, window.STB_CURR || null);
+      const woocsCurr = pickWoocsCurrency();
+      curr = mergeCurrency(curr, woocsCurr);
+      return curr;
+    }
     const FIELD = 'stb_payload';
     const CART_URL = (window.STB_CART_URL || '');
 
@@ -14,6 +141,7 @@
     const $  = (sel, root=document) => root.querySelector(sel);
     const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
     const byId = (id)=> document.getElementById(id);
+    const stbRoot = byId('stb-root');
 
     /* ===== Canvas (retina) ===== */
     const canvas = byId('stb-canvas');
@@ -121,12 +249,52 @@
     const qtyEl  = byId('stb-qty');
     const qtyCustomSave = byId('qtyCustomSave');
 
-    const totalOut    = byId('stb-total');
-    const totalNetOut = byId('stb-total-net');
-    const totalSaveOut= byId('stb-total-save');
-    const totalLeadOut= byId('stb-total-lead');
+    const totalOutEls     = $$('[data-stb-total]');
+    const totalNetOutEls  = $$('[data-stb-total-net]');
+    const totalSaveOutEls = $$('[data-stb-total-save]');
+    const totalLeadOutEls = $$('[data-stb-total-lead]');
+    const priceTimerEls   = $$('[data-stb-price-timer]');
     const addBtn      = byId('stb-add');
-    const addBtnModal = byId('stb-add-modal');
+
+    const step1       = byId('stb-step-1');
+    const step2       = byId('stb-step-2');
+    const step1Next   = byId('stb-step1-next');
+    const step2Back   = byId('stb-step2-back');
+    const uploadTrigger = byId('stb-upload-trigger');
+    const uploadSummary = byId('stb-upload-summary');
+
+    const hasSvgElement = typeof SVGElement !== 'undefined';
+
+    function enforceStepButtonInk(){
+      const scope = stbRoot || document;
+      const buttons = scope.querySelectorAll('.btn-step');
+      buttons.forEach(btn => {
+        if (!(btn instanceof HTMLElement)) return;
+        btn.style.setProperty('color', '#fff', 'important');
+        btn.style.setProperty('-webkit-text-fill-color', '#fff', 'important');
+        btn.querySelectorAll('*').forEach(node => {
+          if (!(node instanceof Element)) return;
+          node.style.setProperty('color', '#fff', 'important');
+          node.style.setProperty('-webkit-text-fill-color', '#fff', 'important');
+          if (hasSvgElement && node instanceof SVGElement){
+            node.style.setProperty('stroke', 'currentColor');
+          }
+        });
+      });
+    }
+
+    enforceStepButtonInk();
+    const btnInkObserver = new MutationObserver(enforceStepButtonInk);
+    if (stbRoot){
+      btnInkObserver.observe(stbRoot, { childList:true, subtree:true, characterData:true });
+    } else {
+      btnInkObserver.observe(document.body || document.documentElement || document, { childList:true, subtree:true, characterData:true });
+    }
+    window.addEventListener('beforeunload', () => btnInkObserver.disconnect(), { once:true });
+    ['languagechange','gtranslate_language_changed','gt_language_changed'].forEach(evt => {
+      window.addEventListener(evt, enforceStepButtonInk);
+      document.addEventListener(evt, enforceStepButtonInk);
+    });
 
     // Toolbar
     const tbZoomOut = byId('tb-zoom-out');
@@ -182,6 +350,70 @@
     const sumMaterialEl = byId('sum-material');
     const sumLaminateEl = byId('sum-laminate');
     const sumLeadtimeEl = byId('sum-leadtime');
+
+    const PRICE_TIMER_DURATION = 15 * 60 * 1000; // 15 minut
+    let priceTimerDeadline = null;
+    let priceTimerInterval = null;
+
+    /* ===== Kroki ===== */
+    const steps = [step1, step2];
+    let currentStep = step1 ? 1 : 0;
+
+    function showStep(stepNumber){
+      if (!steps.length) return;
+      let targetStep = stepNumber;
+      if (!steps[stepNumber - 1]){
+        const fallbackIndex = steps.findIndex(Boolean);
+        targetStep = fallbackIndex >= 0 ? (fallbackIndex + 1) : stepNumber;
+      }
+      currentStep = targetStep;
+      steps.forEach((step, idx) => {
+        if (!step) return;
+        const isCurrent = (idx + 1) === targetStep;
+        step.classList.toggle('is-active', isCurrent);
+        step.setAttribute('aria-hidden', isCurrent ? 'false' : 'true');
+      });
+    }
+
+    function focusFirstInteractive(stepEl){
+      if (!stepEl) return;
+      const focusable = stepEl.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      if (focusable){ focusable.focus({ preventScroll:true }); }
+    }
+
+    if (step1Next && step2){
+      step1Next.addEventListener('click', ()=>{
+        updatePriceAndJSON();
+        showStep(2);
+        if (typeof step2.scrollIntoView === 'function'){
+          step2.scrollIntoView({ behavior:'smooth', block:'start' });
+        }
+        window.requestAnimationFrame(()=> focusFirstInteractive(step2));
+      });
+    }
+
+    if (step2Back && step1){
+      step2Back.addEventListener('click', ()=>{
+        showStep(1);
+        if (typeof step1.scrollIntoView === 'function'){
+          step1.scrollIntoView({ behavior:'smooth', block:'start' });
+        }
+        window.requestAnimationFrame(()=> focusFirstInteractive(step1));
+      });
+    }
+
+    if (uploadTrigger && upBtn){
+      uploadTrigger.addEventListener('click', (ev)=>{
+        ev.preventDefault();
+        upBtn.click();
+      });
+    }
+
+    showStep(currentStep || 1);
+
+    if (priceTimerEls.length){
+      window.addEventListener('beforeunload', stopPriceTimer, { once:true });
+    }
 
     // Tekst
     const textInput     = byId('stb-text-input');
@@ -404,11 +636,159 @@
     }
 
     /* ===== Utils ===== */
-    const fmtMoney = (pln) => {
-      const amount = (pln||0) * (CURR.rate || 1);
-      try { return new Intl.NumberFormat(CURR.locale || 'pl-PL', {style:'currency', currency: CURR.code || 'PLN'}).format(amount); }
-      catch(e){ return (amount||0).toFixed(2) + ' ' + (CURR.code||'PLN'); }
+    const escapeHtml = (value)=>{
+      if (value == null) return '';
+      return String(value).replace(/[&<>"']/g, (ch)=>{
+        switch (ch){
+          case '&': return '&amp;';
+          case '<': return '&lt;';
+          case '>': return '&gt;';
+          case '"': return '&quot;';
+          default: return '&#039;';
+        }
+      });
     };
+
+    const escapeAttr = (value)=>{
+      if (value == null) return '';
+      return String(value).replace(/[&<>"']/g, (ch)=>{
+        switch (ch){
+          case '&': return '&amp;';
+          case '<': return '&lt;';
+          case '>': return '&gt;';
+          case '"': return '&quot;';
+          default: return '&#039;';
+        }
+      });
+    };
+
+    const decodeHtml = (()=>{
+      const txt = document.createElement('textarea');
+      return (value)=>{
+        if (value == null) return '';
+        txt.innerHTML = String(value);
+        return txt.value;
+      };
+    })();
+
+    const normalizeCurrencyPosition = (pos)=>{
+      if (pos == null) return 'right';
+      return String(pos).toLowerCase().replace(/\s+/g, '_').replace(/-+/g, '_');
+    };
+
+    function buildWooPrice(amountPln){
+      const baseValue = Number(amountPln);
+      const base = Number.isFinite(baseValue) ? baseValue : 0;
+      const curr = currentCurrency();
+      const rawRate = Number(curr.rate);
+      const rate = (Number.isFinite(rawRate) && rawRate > 0) ? rawRate : 1;
+      const converted = base * rate;
+      const locale = curr.locale || 'pl-PL';
+      let numberStr;
+      try {
+        numberStr = new Intl.NumberFormat(locale, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        }).format(converted);
+      } catch(err){
+        numberStr = converted.toFixed(2);
+      }
+
+      const symbolRaw = decodeHtml(
+        curr.symbol != null ? curr.symbol :
+        curr.currency_symbol != null ? curr.currency_symbol :
+        curr.symbol_left != null ? curr.symbol_left :
+        curr.symbol_right != null ? curr.symbol_right :
+        ''
+      );
+      const symbol = symbolRaw || (curr.code || 'PLN');
+      const position = normalizeCurrencyPosition(curr.position || curr.currency_pos || 'right');
+      const hasSpace = position.includes('space');
+      const spacer = symbol ? (hasSpace ? '&nbsp;' : '') : '';
+      const htmlSymbol = symbol ? `<span class="woocommerce-Price-currencySymbol">${escapeHtml(symbol)}</span>` : '';
+
+      let body;
+      const numberHtml = escapeHtml(numberStr);
+      if (!htmlSymbol){
+        body = `<bdi>${numberHtml}</bdi>`;
+      } else if (position.startsWith('left')){
+        body = `<bdi>${htmlSymbol}${spacer}${numberHtml}</bdi>`;
+      } else if (position.startsWith('right')){
+        body = `<bdi>${numberHtml}${spacer}${htmlSymbol}</bdi>`;
+      } else {
+        body = `<bdi>${htmlSymbol}${spacer}${numberHtml}</bdi>`;
+      }
+
+      const code = (curr.code || 'PLN').toUpperCase();
+      const baseFixed = base.toFixed(6);
+      const convertedFixed = converted.toFixed(6);
+      const rateFixed = rate.toFixed(6);
+
+      const attrs = [
+        'class="woocommerce-Price-amount amount"',
+        'data-woocs="price"',
+        `data-price-base="${escapeAttr(baseFixed)}"`,
+        `data-price-converted="${escapeAttr(convertedFixed)}"`,
+        `data-woocs-currency="${escapeAttr(code)}"`,
+        `data-woocs-symbol="${escapeAttr(symbol)}"`,
+        `data-woocs-rate="${escapeAttr(rateFixed)}"`,
+        `data-woocs-position="${escapeAttr(position)}"`
+      ];
+
+      const textValue = symbol
+        ? (position.startsWith('left') ? `${symbol} ${numberStr}` : `${numberStr} ${symbol}`)
+        : numberStr;
+
+      return {
+        html: `<span ${attrs.join(' ')}>${body}</span>`,
+        text: textValue,
+        base,
+        baseFixed,
+        converted,
+        convertedFixed,
+        rate,
+        rateFixed,
+        code,
+        symbol,
+        position
+      };
+    }
+
+    function renderWooPrice(el, amountPln, options){
+      if (!el) return;
+      const opts = options || {};
+      const baseValue = Number(amountPln);
+      if (!Number.isFinite(baseValue)){
+        clearWooPrice(el, opts.fallback || '');
+        return;
+      }
+      const price = buildWooPrice(baseValue);
+      let html = price.html;
+      if (opts.prefix){
+        html = `<span class="stb-price-prefix">${escapeHtml(opts.prefix)}</span> ${html}`;
+      }
+      if (opts.suffix){
+        html = `${html} <span class="stb-price-suffix">${escapeHtml(opts.suffix)}</span>`;
+      }
+      el.innerHTML = html;
+      el.dataset.priceBase = price.baseFixed;
+      el.dataset.priceConverted = price.convertedFixed;
+      el.dataset.woocsCurrency = price.code;
+      el.dataset.woocsSymbol = price.symbol;
+      el.dataset.woocsRate = price.rateFixed;
+      el.dataset.woocsPosition = price.position;
+    }
+
+    function clearWooPrice(el, text){
+      if (!el) return;
+      el.textContent = text || '';
+      delete el.dataset.priceBase;
+      delete el.dataset.priceConverted;
+      delete el.dataset.woocsCurrency;
+      delete el.dataset.woocsSymbol;
+      delete el.dataset.woocsRate;
+      delete el.dataset.woocsPosition;
+    }
     const prettyBytes = (b)=>{
       if (!isFinite(b) || b<=0) return '';
       const u=['B','KB','MB','GB']; let i=0;
@@ -1316,6 +1696,7 @@
       uploaded={ name:null, type:null, size:0, dataURL:null, img:null, pdf:null };
       if (imgEl) imgEl.value='';
       if (fName) fName.textContent='brak pliku';
+      if (uploadSummary) uploadSummary.textContent='Brak pliku';
       if (fMeta) fMeta.textContent='';
       transform={scale:1,offsetX:0,offsetY:0,rotDeg:0};
       if (lastToolTarget === 'image') setToolTarget(null);
@@ -1332,6 +1713,7 @@
       if (!f){ clearImage(); return; }
       const name = f.name || '';
       if (fName) fName.textContent = name;
+      if (uploadSummary) uploadSummary.textContent = name;
 
       // jeśli diecut — tylko PNG z przezroczystością
       if (shape==='diecut'){
@@ -1800,7 +2182,7 @@
         const q = parseInt(btn.getAttribute('data-qty'),10)||1;
         const calcB = computeTotalForQty(q), A = computeBaselineA(q);
         const priceEl = btn.querySelector('.opt-price'), saveEl = btn.querySelector('.opt-save');
-        if (priceEl) priceEl.textContent = fmtMoney(calcB.total);
+        if (priceEl) renderWooPrice(priceEl, calcB.total);
         let pctSave = 0; if (A>0.0001){ const ratioPct=(calcB.total/A)*100; pctSave=Math.max(0,100-ratioPct); }
         if (saveEl) saveEl.textContent = (pctSave>=0.5)?('oszczędzasz '+Math.round(pctSave)+'%'):'';
       });
@@ -1838,6 +2220,54 @@
       }
     }
 
+    function formatPLTimeOnly(dt){
+      try{
+        return dt.toLocaleTimeString('pl-PL', { hour:'2-digit', minute:'2-digit' });
+      }catch(e){
+        const h = dt.getHours().toString().padStart(2, '0');
+        const m = dt.getMinutes().toString().padStart(2, '0');
+        return h + ':' + m;
+      }
+    }
+
+    function updatePriceTimerDisplay(){
+      if (!priceTimerEls.length) return;
+      if (!priceTimerDeadline){
+        priceTimerDeadline = Date.now() + PRICE_TIMER_DURATION;
+      }
+      const now = Date.now();
+      let remaining = priceTimerDeadline - now;
+      if (remaining <= 0){
+        priceTimerDeadline = now + PRICE_TIMER_DURATION;
+        remaining = priceTimerDeadline - now;
+      }
+      const totalSeconds = Math.max(0, Math.floor(remaining / 1000));
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      const countdown = minutes.toString().padStart(2, '0') + ':' + seconds.toString().padStart(2, '0');
+      const current = new Date();
+      const dateStr = formatPLDateOnly(current);
+      const timeStr = formatPLTimeOnly(current);
+      const text = 'Aktualne przez ' + countdown + ' • ' + dateStr + ', ' + timeStr;
+      priceTimerEls.forEach((el)=>{ el.textContent = text; });
+    }
+
+    function restartPriceTimer(){
+      if (!priceTimerEls.length) return;
+      priceTimerDeadline = Date.now() + PRICE_TIMER_DURATION;
+      updatePriceTimerDisplay();
+      if (!priceTimerInterval){
+        priceTimerInterval = window.setInterval(updatePriceTimerDisplay, 1000);
+      }
+    }
+
+    function stopPriceTimer(){
+      if (priceTimerInterval){
+        window.clearInterval(priceTimerInterval);
+        priceTimerInterval = null;
+      }
+    }
+
     function updateSummaryMeta(calc){
       if (sumShapeEl)    sumShapeEl.textContent = 'Kształt: ' + shapeLabel(shape);
       if (sumMaterialEl) sumMaterialEl.textContent = 'Materiał: ' + (materialEl?.value || 'Folia ekonomiczna');
@@ -1849,7 +2279,7 @@
       const target = addBusinessDays(new Date(), days);
       const leadText = 'Wysyłka do ' + formatPLDateOnly(target);
       if (sumLeadtimeEl) sumLeadtimeEl.textContent = leadText;
-      if (totalLeadOut) totalLeadOut.textContent = leadText;
+      totalLeadOutEls.forEach((el)=>{ el.textContent = leadText; });
     }
 
     // popup do wyceny
@@ -1922,17 +2352,29 @@
         pctSave = Math.max(0, 100 - ratioPct);
       }
 
-      if (totalOut)    totalOut.textContent = (calc.total_area >= 100 ? 'WYCENA INDYWIDUALNA' : fmtMoney(calc.total));
-      if (totalNetOut) totalNetOut.textContent = (calc.total_area >= 100 ? '' : (fmtMoney(calc.net) + ' netto'));
-      if (totalSaveOut) totalSaveOut.textContent = (pctSave >= 0.5) ? ('Oszczędzasz ' + Math.round(pctSave) + '%') : '';
+      if (calc.total_area >= 100){
+        totalOutEls.forEach((el)=> clearWooPrice(el, 'WYCENA INDYWIDUALNA'));
+        totalNetOutEls.forEach((el)=> clearWooPrice(el, ''));
+      } else {
+        totalOutEls.forEach((el)=> renderWooPrice(el, calc.total));
+        totalNetOutEls.forEach((el)=> renderWooPrice(el, calc.net, { prefix: 'Netto:' }));
+      }
+      const saveText = (pctSave >= 0.5) ? ('Oszczędzasz ' + Math.round(pctSave) + '%') : '';
+      totalSaveOutEls.forEach((el)=>{ el.textContent = saveText; });
 
       const w_cm=parseNum(wEl,10), h_cm=parseNum(hEl,10);
       if (sumDims)  sumDims.textContent = `${(w_cm).toString().replace('.',',')} × ${(h_cm).toString().replace('.',',')} cm`;
       if (sumQty)   sumQty.textContent  = `${qty} szt.`;
-      if (sumTotal) sumTotal.textContent= (calc.total_area >= 100 ? 'WYCENA INDYWIDUALNA' : fmtMoney(calc.total));
-      if (sumNet)   sumNet.textContent  = (calc.total_area >= 100 ? '' : (fmtMoney(calc.net) + ' netto'));
+      if (calc.total_area >= 100){
+        if (sumTotal) clearWooPrice(sumTotal, 'WYCENA INDYWIDUALNA');
+        if (sumNet) clearWooPrice(sumNet, '');
+      } else {
+        if (sumTotal) renderWooPrice(sumTotal, calc.total);
+        if (sumNet) renderWooPrice(sumNet, calc.net, { suffix: 'netto' });
+      }
 
       updateSummaryMeta(calc);
+      restartPriceTimer();
 
       // Popup jeśli >= 100 m2
       if (calc.total_area >= 100){
@@ -2461,7 +2903,110 @@
       if (wooBtn){ wooBtn.click(); } else { form.submit(); }
     };
     if (addBtn)      addBtn.addEventListener('click', handleAddToCart);
-    if (addBtnModal) addBtnModal.addEventListener('click', handleAddToCart);
+
+    /* ===== Waluty ===== */
+    let lastCurrencySignature = null;
+
+    function captureCurrencySignature(){
+      const curr = currentCurrency();
+      const rate = (curr && typeof curr.rate === 'number' && Number.isFinite(curr.rate)) ? curr.rate : '';
+      return [
+        curr && curr.code ? curr.code : '',
+        curr && curr.symbol ? curr.symbol : '',
+        curr && curr.position ? curr.position : '',
+        curr && curr.locale ? curr.locale : '',
+        rate === '' ? '' : String(rate)
+      ].join('|');
+    }
+
+    function applyCurrencyRefresh(){
+      refreshQtyPrices();
+      updatePriceAndJSON();
+    }
+
+    function ensureCurrencySync(force){
+      const signature = captureCurrencySignature();
+      if (!force && signature === lastCurrencySignature){ return; }
+      applyCurrencyRefresh();
+      lastCurrencySignature = captureCurrencySignature();
+    }
+
+    function refreshCurrencyUI(){
+      applyCurrencyRefresh();
+      lastCurrencySignature = captureCurrencySignature();
+    }
+
+    const currencyEvents = [
+      'stb:currency-change',
+      'stb:update-currency',
+      'stbCurrencyChange',
+      'woocommerce_currency_set',
+      'currency_switcher_refreshed',
+      'woocs_currency_changed',
+      'woocs_conversion_done'
+    ];
+
+    const handleCurrencyEvent = ()=>{
+      ensureCurrencySync(true);
+      window.setTimeout(()=> ensureCurrencySync(), 25);
+      window.setTimeout(()=> ensureCurrencySync(), 200);
+    };
+
+    currencyEvents.forEach(evt=>{
+      window.addEventListener(evt, handleCurrencyEvent, true);
+      document.addEventListener(evt, handleCurrencyEvent, true);
+    });
+
+    if (window.jQuery && typeof window.jQuery === 'function'){
+      try {
+        window.jQuery(document).on('woocs_currency_changed woocs_conversion_done woocs_rates_updated', handleCurrencyEvent);
+      } catch(err){
+        console.error('WOOCS hook error:', err);
+      }
+    }
+
+    if (typeof window.STB_refreshCurrency === 'function'){
+      const prevCurrencyHook = window.STB_refreshCurrency;
+      window.STB_refreshCurrency = function(){
+        try { prevCurrencyHook.apply(window, arguments); }
+        catch(err){ console.error('STB_refreshCurrency legacy hook error:', err); }
+        handleCurrencyEvent();
+      };
+    } else {
+      window.STB_refreshCurrency = handleCurrencyEvent;
+    }
+
+    if (typeof window.woocs_set_currency === 'function'){
+      const prevWoocsSet = window.woocs_set_currency;
+      window.woocs_set_currency = function(){
+        const result = prevWoocsSet.apply(this, arguments);
+        handleCurrencyEvent();
+        return result;
+      };
+    }
+
+    let currencyObserverBody = null;
+    let currencyObserverHtml = null;
+
+    if (window.MutationObserver){
+      const observerCfg = { attributes:true, attributeFilter:['data-woocs-currency','data-woocs-rate','data-currency','data-woocs-symbol'] };
+      if (document.body){
+        currencyObserverBody = new MutationObserver(handleCurrencyEvent);
+        currencyObserverBody.observe(document.body, observerCfg);
+      }
+      if (document.documentElement){
+        currencyObserverHtml = new MutationObserver(handleCurrencyEvent);
+        currencyObserverHtml.observe(document.documentElement, observerCfg);
+      }
+    }
+
+    const currencyPollId = window.setInterval(()=> ensureCurrencySync(), 1500);
+    window.addEventListener('focus', ()=> window.setTimeout(()=> ensureCurrencySync(), 30));
+    window.addEventListener('beforeunload', ()=>{
+      if (currencyObserverBody){ currencyObserverBody.disconnect(); currencyObserverBody = null; }
+      if (currencyObserverHtml){ currencyObserverHtml.disconnect(); currencyObserverHtml = null; }
+      if (currencyPollId){ window.clearInterval(currencyPollId); }
+    });
 
     /* ===== Modal ===== */
     const modal = byId('stb-modal');
@@ -2516,6 +3061,7 @@
 
     refreshQtyPrices();
     updatePriceAndJSON();
+    lastCurrencySignature = captureCurrencySignature();
     requestDraw();
 
     if (!QRCodeLib) console.warn('Uwaga: biblioteka QR (davidshimjs) nie została wykryta.');
