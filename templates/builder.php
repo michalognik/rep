@@ -132,6 +132,7 @@ if ( ! defined( 'ABSPATH' ) ) {
             <div class="stb-card stb-step" id="stb-step-2" aria-hidden="true">
                 <div class="step-content">
                     <header class="step-header">
+                        <button type="button" class="step-back-link" id="stb-step2-back">Wróć do parametrów</button>
                         <h2 class="step-title">Projekt naklejki</h2>
                     </header>
                     <div class="step-options">

@@ -170,6 +170,7 @@
     const step1       = byId('stb-step-1');
     const step2       = byId('stb-step-2');
     const step1Next   = byId('stb-step1-next');
+    const step2Back   = byId('stb-step2-back');
     const uploadTrigger = byId('stb-upload-trigger');
     const uploadSummary = byId('stb-upload-summary');
 
@@ -266,6 +267,16 @@
           step2.scrollIntoView({ behavior:'smooth', block:'start' });
         }
         window.requestAnimationFrame(()=> focusFirstInteractive(step2));
+      });
+    }
+
+    if (step2Back && step1){
+      step2Back.addEventListener('click', ()=>{
+        showStep(1);
+        if (typeof step1.scrollIntoView === 'function'){
+          step1.scrollIntoView({ behavior:'smooth', block:'start' });
+        }
+        window.requestAnimationFrame(()=> focusFirstInteractive(step1));
       });
     }
 
