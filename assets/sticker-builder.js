@@ -5,43 +5,131 @@
     /* ===== Konfiguracja/zgodność ===== */
     const DEFAULT_CURRENCY = { code:'PLN', rate:1, symbol:'zł', position:'right', locale:'pl-PL' };
 
-    function currentCurrency(){
-      const base = { ...DEFAULT_CURRENCY };
-      const raw = window.STB_CURR;
-      if (!raw || typeof raw !== 'object') return base;
-
-      if (typeof raw.code === 'string' && raw.code){
-        base.code = raw.code.toUpperCase();
-      } else if (typeof raw.currency === 'string' && raw.currency){
-        base.code = raw.currency.toUpperCase();
+    function parseRateValue(rawRate){
+      if (rawRate == null) return null;
+      if (typeof rawRate === 'number' && Number.isFinite(rawRate) && rawRate > 0){
+        return rawRate;
       }
-
-      if (typeof raw.symbol === 'string' && raw.symbol){
-        base.symbol = raw.symbol;
-      }
-
-      if (typeof raw.position === 'string' && raw.position){
-        base.position = raw.position;
-      }
-
-      if (typeof raw.locale === 'string' && raw.locale){
-        base.locale = raw.locale;
-      } else if (typeof raw.lang === 'string' && raw.lang){
-        base.locale = raw.lang;
-      }
-
-      const rawRate = (raw.rate != null ? raw.rate : raw.multiplier);
-      let rateNum = Number(rawRate);
       if (typeof rawRate === 'string'){
-        const normalized = rawRate.replace(',', '.');
+        const normalized = rawRate.replace(',', '.').trim();
+        if (!normalized) return null;
         const parsed = parseFloat(normalized);
-        if (Number.isFinite(parsed)) rateNum = parsed;
+        if (Number.isFinite(parsed) && parsed > 0){
+          return parsed;
+        }
       }
-      if (Number.isFinite(rateNum) && rateNum > 0){
-        base.rate = rateNum;
+      return null;
+    }
+
+    function mergeCurrency(base, patch){
+      if (!patch || typeof patch !== 'object') return base;
+      const out = { ...base };
+      if (typeof patch.code === 'string' && patch.code){ out.code = patch.code.toUpperCase(); }
+      if (typeof patch.currency === 'string' && patch.currency){ out.code = patch.currency.toUpperCase(); }
+      if (typeof patch.symbol === 'string' && patch.symbol){ out.symbol = patch.symbol; }
+      if (typeof patch.currency_symbol === 'string' && patch.currency_symbol){ out.symbol = patch.currency_symbol; }
+      if (typeof patch.symbol_left === 'string' && patch.symbol_left){ out.symbol = patch.symbol_left; out.position = 'left'; }
+      if (typeof patch.symbol_right === 'string' && patch.symbol_right){ out.symbol = patch.symbol_right; out.position = 'right'; }
+      if (typeof patch.position === 'string' && patch.position){ out.position = patch.position; }
+      if (typeof patch.currency_pos === 'string' && patch.currency_pos){ out.position = patch.currency_pos; }
+      if (typeof patch.locale === 'string' && patch.locale){ out.locale = patch.locale; }
+      if (typeof patch.lang === 'string' && patch.lang){ out.locale = patch.lang; }
+      const rate = parseRateValue(patch.rate != null ? patch.rate : patch.multiplier != null ? patch.multiplier : patch.currency_rate);
+      if (rate) out.rate = rate;
+      return out;
+    }
+
+    function pickWoocsCurrency(){
+      const win = window;
+      const woocs = win.WOOCS || win.woocs_params || {};
+      const result = {};
+
+      const code = [
+        win.WOOCS_CURRENT_CURRENCY,
+        win.woocs_current_currency,
+        woocs.current_currency,
+        woocs.currency,
+        woocs.currency_code,
+        woocs.default_currency
+      ].find(val => typeof val === 'string' && val.trim().length);
+      if (code){ result.code = code.trim().toUpperCase(); }
+
+      const symbol = [
+        win.WOOCS_CURRENT_SYMBOL,
+        win.woocs_current_currency_symbol,
+        woocs.currency_symbol,
+        woocs.symbol,
+        woocs.symbol_left,
+        woocs.symbol_right
+      ].find(val => typeof val === 'string' && val.trim().length);
+      if (symbol){ result.symbol = symbol; }
+
+      const position = [
+        win.WOOCS_CURRENT_POSITION,
+        win.woocs_current_currency_position,
+        woocs.currency_pos,
+        woocs.position
+      ].find(val => typeof val === 'string' && val.trim().length);
+      if (position){ result.position = position; }
+
+      const locale = [ woocs.locale, woocs.lang, woocs.language ].find(val => typeof val === 'string' && val.trim().length);
+      if (locale){ result.locale = locale; }
+
+      let rate = parseRateValue(
+        win.woocs_current_currency_rate != null ? win.woocs_current_currency_rate :
+        win.WOOCS_CURRENT_RATE != null ? win.WOOCS_CURRENT_RATE :
+        win.WOOCS_RATE
+      );
+
+      const codeForRate = result.code;
+      const rateMaps = [
+        win.woocs_currency_rates,
+        win.WOOCS_RATES,
+        woocs.currency_rates,
+        woocs.rates,
+        (document.body && document.body.dataset ? document.body.dataset : null)
+      ];
+
+      if (!rate && codeForRate){
+        for (const map of rateMaps){
+          if (!map) continue;
+          let fromMap = map[codeForRate];
+          if (fromMap == null && typeof codeForRate === 'string'){
+            const lower = codeForRate.toLowerCase();
+            const upper = codeForRate.toUpperCase();
+            if (lower !== codeForRate){ fromMap = map[lower]; }
+            if (fromMap == null && upper !== codeForRate){ fromMap = map[upper]; }
+          }
+          const parsed = parseRateValue(fromMap);
+          if (parsed){ rate = parsed; break; }
+        }
       }
 
-      return base;
+      if (rate){ result.rate = rate; }
+
+      if (!result.symbol && woocs.currencies && codeForRate && typeof woocs.currencies === 'object'){
+        const curr = woocs.currencies[codeForRate];
+        if (curr){
+          if (curr.symbol){ result.symbol = curr.symbol; }
+          if (curr.symbol_left){ result.symbol = curr.symbol_left; result.position = 'left'; }
+          if (curr.symbol_right){ result.symbol = curr.symbol_right; result.position = 'right'; }
+          if (!result.position && typeof curr.position === 'string' && curr.position){ result.position = curr.position; }
+          if (!rate && curr.rate != null){
+            const fromCurr = parseRateValue(curr.rate);
+            if (fromCurr){ rate = fromCurr; result.rate = rate; }
+          }
+        }
+      }
+
+      return result;
+    }
+
+    function currentCurrency(){
+      let curr = { ...DEFAULT_CURRENCY };
+      curr = mergeCurrency(curr, window.STB_CURR || null);
+      const woocsCurr = pickWoocsCurrency();
+      curr = mergeCurrency(curr, woocsCurr);
+      return curr;
     }
     const FIELD = 'stb_payload';
     const CART_URL = (window.STB_CART_URL || '');
