@@ -23,7 +23,7 @@
 #stb-root .stb-step .step-footer{ background:#fff; padding:0 24px 24px; display:flex; justify-content:center; border-top:1px solid var(--line) }
 #stb-root #stb-step-1 .order-col{ padding:24px; gap:18px; border-bottom:1px solid var(--line) }
 #stb-root #stb-step-1 .step-footer{ padding:0 24px 24px }
-#stb-root #stb-step-2 .step-content{ display:grid; gap:20px; padding:24px }
+#stb-root #stb-step-2 .step-content{ display:grid; gap:20px; padding:24px; max-width:75%; margin:0 auto }
 #stb-root #stb-step-2 .step-header{ display:grid; gap:6px; text-align:center; align-items:center; justify-items:center }
 #stb-root #stb-step-2 .step-title{ margin:0; font-size:1.45rem; font-weight:700; letter-spacing:.02em }
 #stb-root #stb-step-2 .step-back-link{
@@ -57,7 +57,21 @@
   margin-left:-10px;
 }
 #stb-root #stb-step-2 .step-options{ display:grid; gap:16px }
-#stb-root #stb-step-2 .step-options .btn-step{ justify-content:center }
+#stb-root #stb-step-2 .step-options .btn-step{
+  justify-content:center;
+  background:linear-gradient(360deg,#F3831B 0%,#FFCB00 100%) !important;
+  border-color:#F3831B !important;
+  box-shadow:0 18px 32px rgba(243,131,27,.35),0 0 0 1px rgba(255,203,0,.32);
+  padding:32px 28px;
+}
+#stb-root #stb-step-2 .step-options .btn-step:hover{
+  background:linear-gradient(360deg,#ff8f1f 0%,#ffd740 100%) !important;
+  border-color:#ff8f1f !important;
+  box-shadow:0 22px 36px rgba(243,131,27,.4),0 0 0 1px rgba(255,215,64,.32);
+}
+#stb-root #stb-step-2 .step-options .btn-step:active{
+  box-shadow:0 14px 24px rgba(243,131,27,.36),0 0 0 1px rgba(255,203,0,.3);
+}
 #stb-root #stb-step-2 .step-file-info{ margin:0; font-size:.85rem; color:var(--muted); font-weight:500; text-align:center }
 #stb-root #stb-step-2 .cta{ justify-content:center }
 
@@ -72,7 +86,7 @@
   #stb-root .step-price-panel .total-lead{ text-align:center; }
   #stb-root .step-price-panel .total-lead{ justify-content:center; }
   #stb-root .stb-step .step-footer{ padding:12px 18px 18px; }
-  #stb-root #stb-step-2 .step-content{ padding:18px; }
+  #stb-root #stb-step-2 .step-content{ padding:18px; max-width:100%; }
   #stb-root #stb-step-2 .step-title{ font-size:1.28rem; }
   #stb-root #stb-step-2 .step-back-link{ font-size:.78rem; }
   #stb-root #stb-step-2 .step-options{ gap:12px; }
