@@ -2,6 +2,78 @@
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
+
+$stb_currency_code = 'PLN';
+if ( function_exists( 'woocs_get_current_currency' ) ) {
+    $stb_currency_code = woocs_get_current_currency();
+} elseif ( function_exists( 'get_woocommerce_currency' ) ) {
+    $stb_currency_code = get_woocommerce_currency();
+}
+if ( ! is_string( $stb_currency_code ) || $stb_currency_code === '' ) {
+    $stb_currency_code = 'PLN';
+}
+$stb_currency_code = strtoupper( sanitize_text_field( $stb_currency_code ) );
+
+$stb_currency_symbol = function_exists( 'get_woocommerce_currency_symbol' )
+    ? get_woocommerce_currency_symbol( $stb_currency_code )
+    : $stb_currency_code;
+if ( is_string( $stb_currency_symbol ) ) {
+    $stb_currency_symbol = html_entity_decode( wp_strip_all_tags( $stb_currency_symbol ) );
+} else {
+    $stb_currency_symbol = $stb_currency_code;
+}
+$stb_currency_symbol = sanitize_text_field( trim( $stb_currency_symbol ) );
+
+$stb_currency_position      = sanitize_text_field( (string) get_option( 'woocommerce_currency_pos', 'right' ) );
+$stb_currency_position_attr = strtolower( str_replace( '-', '_', $stb_currency_position ) );
+$stb_rate                   = apply_filters( 'woocs_exchange_value', 1 );
+if ( ! is_numeric( $stb_rate ) || floatval( $stb_rate ) <= 0 ) {
+    $stb_rate = 1;
+}
+$stb_rate = floatval( $stb_rate );
+
+$stb_zero_converted_val  = apply_filters( 'woocs_exchange_value', 0 );
+if ( ! is_numeric( $stb_zero_converted_val ) ) {
+    $stb_zero_converted_val = 0;
+}
+$stb_zero_converted_val = floatval( $stb_zero_converted_val );
+$stb_zero_converted_str = number_format( $stb_zero_converted_val, 6, '.', '' );
+$stb_rate_str            = number_format( $stb_rate, 6, '.', '' );
+$stb_currency_code_clean = strtoupper( $stb_currency_code );
+
+$stb_zero_price_markup = '';
+if ( function_exists( 'wc_price' ) ) {
+    $stb_zero_price_markup = wc_price( $stb_zero_converted_val );
+    $stb_zero_price_markup = preg_replace(
+        '/<span\s+class="woocommerce-Price-amount amount"/i',
+        '<span class="woocommerce-Price-amount amount" data-woocs="price" data-price-base="0" data-price-converted="' . esc_attr( $stb_zero_converted_str ) . '" data-woocs-currency="' . esc_attr( $stb_currency_code_clean ) . '" data-woocs-symbol="' . esc_attr( $stb_currency_symbol ) . '" data-woocs-rate="' . esc_attr( $stb_rate_str ) . '" data-woocs-position="' . esc_attr( $stb_currency_position_attr ) . '"',
+        $stb_zero_price_markup,
+        1
+    );
+} else {
+    $stb_number  = esc_html( number_format_i18n( $stb_zero_converted_val, 2 ) );
+    $stb_symbol  = esc_html( $stb_currency_symbol );
+    $stb_nbsp    = '&nbsp;';
+    $stb_body    = '<bdi>' . $stb_number . $stb_nbsp . '<span class="woocommerce-Price-currencySymbol">' . $stb_symbol . '</span></bdi>';
+    if ( strpos( $stb_currency_position_attr, 'left' ) === 0 ) {
+        $stb_body = '<bdi><span class="woocommerce-Price-currencySymbol">' . $stb_symbol . '</span>' . $stb_nbsp . $stb_number . '</bdi>';
+    }
+    $stb_zero_price_markup = sprintf(
+        '<span class="woocommerce-Price-amount amount" data-woocs="price" data-price-base="0" data-price-converted="%1$s" data-woocs-currency="%2$s" data-woocs-symbol="%3$s" data-woocs-rate="%4$s" data-woocs-position="%5$s">%6$s</span>',
+        esc_attr( $stb_zero_converted_str ),
+        esc_attr( $stb_currency_code_clean ),
+        esc_attr( $stb_currency_symbol ),
+        esc_attr( $stb_rate_str ),
+        esc_attr( $stb_currency_position_attr ),
+        $stb_body
+    );
+}
+
+$stb_zero_net_markup = sprintf(
+    '<span class="stb-price-prefix">%s</span> %s',
+    esc_html__( 'Netto:', 'sticker-builder' ),
+    $stb_zero_price_markup
+);
 ?>
 <div id="stb-root">
     <div class="stb-wrap">
@@ -142,8 +214,8 @@ if ( ! defined( 'ABSPATH' ) ) {
                     <p class="step-file-info" id="stb-upload-summary">Brak pliku</p>
                     <p class="price-timer" id="stb-price-timer" aria-live="polite"></p>
                     <div class="price-box">
-                        <div class="total-val" id="stb-total">0,00 zł</div>
-                        <div class="total-net" id="stb-total-net">Netto: 0,00 zł</div>
+                        <div class="total-val" id="stb-total"><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
+                        <div class="total-net" id="stb-total-net"><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
                         <div class="total-save" id="stb-total-save" aria-live="polite"></div>
                         <div class="total-lead" id="stb-total-lead" aria-live="polite"></div>
                     </div>

@@ -602,25 +602,159 @@
     }
 
     /* ===== Utils ===== */
-    const fmtMoney = (pln) => {
-      const curr = currentCurrency();
-      const amount = (pln||0) * (curr.rate || 1);
-      try {
-        return new Intl.NumberFormat(curr.locale || 'pl-PL', {
-          style:'currency',
-          currency: curr.code || 'PLN'
-        }).format(amount);
-      }
-      catch(e){
-        const fallback = (amount||0).toFixed(2);
-        if (curr.position === 'left'){ return (curr.symbol || curr.code || 'PLN') + ' ' + fallback; }
-        if (curr.position === 'left_space'){ return (curr.symbol || curr.code || 'PLN') + ' ' + fallback; }
-        if (curr.position === 'right' || curr.position === 'right_space'){
-          return fallback + ' ' + (curr.symbol || curr.code || 'PLN');
+    const escapeHtml = (value)=>{
+      if (value == null) return '';
+      return String(value).replace(/[&<>"']/g, (ch)=>{
+        switch (ch){
+          case '&': return '&amp;';
+          case '<': return '&lt;';
+          case '>': return '&gt;';
+          case '"': return '&quot;';
+          default: return '&#039;';
         }
-        return fallback + ' ' + (curr.code || 'PLN');
-      }
+      });
     };
+
+    const escapeAttr = (value)=>{
+      if (value == null) return '';
+      return String(value).replace(/[&<>"']/g, (ch)=>{
+        switch (ch){
+          case '&': return '&amp;';
+          case '<': return '&lt;';
+          case '>': return '&gt;';
+          case '"': return '&quot;';
+          default: return '&#039;';
+        }
+      });
+    };
+
+    const decodeHtml = (()=>{
+      const txt = document.createElement('textarea');
+      return (value)=>{
+        if (value == null) return '';
+        txt.innerHTML = String(value);
+        return txt.value;
+      };
+    })();
+
+    const normalizeCurrencyPosition = (pos)=>{
+      if (pos == null) return 'right';
+      return String(pos).toLowerCase().replace(/\s+/g, '_').replace(/-+/g, '_');
+    };
+
+    function buildWooPrice(amountPln){
+      const baseValue = Number(amountPln);
+      const base = Number.isFinite(baseValue) ? baseValue : 0;
+      const curr = currentCurrency();
+      const rawRate = Number(curr.rate);
+      const rate = (Number.isFinite(rawRate) && rawRate > 0) ? rawRate : 1;
+      const converted = base * rate;
+      const locale = curr.locale || 'pl-PL';
+      let numberStr;
+      try {
+        numberStr = new Intl.NumberFormat(locale, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        }).format(converted);
+      } catch(err){
+        numberStr = converted.toFixed(2);
+      }
+
+      const symbolRaw = decodeHtml(
+        curr.symbol != null ? curr.symbol :
+        curr.currency_symbol != null ? curr.currency_symbol :
+        curr.symbol_left != null ? curr.symbol_left :
+        curr.symbol_right != null ? curr.symbol_right :
+        ''
+      );
+      const symbol = symbolRaw || (curr.code || 'PLN');
+      const position = normalizeCurrencyPosition(curr.position || curr.currency_pos || 'right');
+      const hasSpace = position.includes('space');
+      const spacer = symbol ? (hasSpace ? '&nbsp;' : '') : '';
+      const htmlSymbol = symbol ? `<span class="woocommerce-Price-currencySymbol">${escapeHtml(symbol)}</span>` : '';
+
+      let body;
+      const numberHtml = escapeHtml(numberStr);
+      if (!htmlSymbol){
+        body = `<bdi>${numberHtml}</bdi>`;
+      } else if (position.startsWith('left')){
+        body = `<bdi>${htmlSymbol}${spacer}${numberHtml}</bdi>`;
+      } else if (position.startsWith('right')){
+        body = `<bdi>${numberHtml}${spacer}${htmlSymbol}</bdi>`;
+      } else {
+        body = `<bdi>${htmlSymbol}${spacer}${numberHtml}</bdi>`;
+      }
+
+      const code = (curr.code || 'PLN').toUpperCase();
+      const baseFixed = base.toFixed(6);
+      const convertedFixed = converted.toFixed(6);
+      const rateFixed = rate.toFixed(6);
+
+      const attrs = [
+        'class="woocommerce-Price-amount amount"',
+        'data-woocs="price"',
+        `data-price-base="${escapeAttr(baseFixed)}"`,
+        `data-price-converted="${escapeAttr(convertedFixed)}"`,
+        `data-woocs-currency="${escapeAttr(code)}"`,
+        `data-woocs-symbol="${escapeAttr(symbol)}"`,
+        `data-woocs-rate="${escapeAttr(rateFixed)}"`,
+        `data-woocs-position="${escapeAttr(position)}"`
+      ];
+
+      const textValue = symbol
+        ? (position.startsWith('left') ? `${symbol} ${numberStr}` : `${numberStr} ${symbol}`)
+        : numberStr;
+
+      return {
+        html: `<span ${attrs.join(' ')}>${body}</span>`,
+        text: textValue,
+        base,
+        baseFixed,
+        converted,
+        convertedFixed,
+        rate,
+        rateFixed,
+        code,
+        symbol,
+        position
+      };
+    }
+
+    function renderWooPrice(el, amountPln, options){
+      if (!el) return;
+      const opts = options || {};
+      const baseValue = Number(amountPln);
+      if (!Number.isFinite(baseValue)){
+        clearWooPrice(el, opts.fallback || '');
+        return;
+      }
+      const price = buildWooPrice(baseValue);
+      let html = price.html;
+      if (opts.prefix){
+        html = `<span class="stb-price-prefix">${escapeHtml(opts.prefix)}</span> ${html}`;
+      }
+      if (opts.suffix){
+        html = `${html} <span class="stb-price-suffix">${escapeHtml(opts.suffix)}</span>`;
+      }
+      el.innerHTML = html;
+      el.dataset.priceBase = price.baseFixed;
+      el.dataset.priceConverted = price.convertedFixed;
+      el.dataset.woocsCurrency = price.code;
+      el.dataset.woocsSymbol = price.symbol;
+      el.dataset.woocsRate = price.rateFixed;
+      el.dataset.woocsPosition = price.position;
+    }
+
+    function clearWooPrice(el, text){
+      if (!el) return;
+      el.textContent = text || '';
+      delete el.dataset.priceBase;
+      delete el.dataset.priceConverted;
+      delete el.dataset.woocsCurrency;
+      delete el.dataset.woocsSymbol;
+      delete el.dataset.woocsRate;
+      delete el.dataset.woocsPosition;
+    }
     const prettyBytes = (b)=>{
       if (!isFinite(b) || b<=0) return '';
       const u=['B','KB','MB','GB']; let i=0;
@@ -2014,7 +2148,7 @@
         const q = parseInt(btn.getAttribute('data-qty'),10)||1;
         const calcB = computeTotalForQty(q), A = computeBaselineA(q);
         const priceEl = btn.querySelector('.opt-price'), saveEl = btn.querySelector('.opt-save');
-        if (priceEl) priceEl.textContent = fmtMoney(calcB.total);
+        if (priceEl) renderWooPrice(priceEl, calcB.total);
         let pctSave = 0; if (A>0.0001){ const ratioPct=(calcB.total/A)*100; pctSave=Math.max(0,100-ratioPct); }
         if (saveEl) saveEl.textContent = (pctSave>=0.5)?('oszczędzasz '+Math.round(pctSave)+'%'):'';
       });
@@ -2183,15 +2317,25 @@
         pctSave = Math.max(0, 100 - ratioPct);
       }
 
-      if (totalOut)    totalOut.textContent = (calc.total_area >= 100 ? 'WYCENA INDYWIDUALNA' : fmtMoney(calc.total));
-      if (totalNetOut) totalNetOut.textContent = (calc.total_area >= 100 ? '' : (fmtMoney(calc.net) + ' netto'));
+      if (calc.total_area >= 100){
+        if (totalOut) clearWooPrice(totalOut, 'WYCENA INDYWIDUALNA');
+        if (totalNetOut) clearWooPrice(totalNetOut, '');
+      } else {
+        if (totalOut) renderWooPrice(totalOut, calc.total);
+        if (totalNetOut) renderWooPrice(totalNetOut, calc.net, { prefix: 'Netto:' });
+      }
       if (totalSaveOut) totalSaveOut.textContent = (pctSave >= 0.5) ? ('Oszczędzasz ' + Math.round(pctSave) + '%') : '';
 
       const w_cm=parseNum(wEl,10), h_cm=parseNum(hEl,10);
       if (sumDims)  sumDims.textContent = `${(w_cm).toString().replace('.',',')} × ${(h_cm).toString().replace('.',',')} cm`;
       if (sumQty)   sumQty.textContent  = `${qty} szt.`;
-      if (sumTotal) sumTotal.textContent= (calc.total_area >= 100 ? 'WYCENA INDYWIDUALNA' : fmtMoney(calc.total));
-      if (sumNet)   sumNet.textContent  = (calc.total_area >= 100 ? '' : (fmtMoney(calc.net) + ' netto'));
+      if (calc.total_area >= 100){
+        if (sumTotal) clearWooPrice(sumTotal, 'WYCENA INDYWIDUALNA');
+        if (sumNet) clearWooPrice(sumNet, '');
+      } else {
+        if (sumTotal) renderWooPrice(sumTotal, calc.total);
+        if (sumNet) renderWooPrice(sumNet, calc.net, { suffix: 'netto' });
+      }
 
       updateSummaryMeta(calc);
       restartPriceTimer();
