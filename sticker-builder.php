@@ -22,6 +22,7 @@ final class WC_Sticker_Builder {
         add_filter( 'woocommerce_get_item_data', [ __CLASS__, 'show_item_data' ], 10, 2 );
         add_filter( 'woocommerce_cart_item_thumbnail', [ __CLASS__, 'cart_item_thumbnail' ], 10, 3 );
         add_filter( 'woocommerce_add_to_cart_redirect', [ __CLASS__, 'maybe_redirect_to_cart' ] );
+        add_action( 'woocommerce_checkout_create_order_line_item', [ __CLASS__, 'add_order_item_meta' ], 10, 4 );
     }
 
     public static function plugin_path( $append = '' ) {
@@ -247,6 +248,47 @@ final class WC_Sticker_Builder {
             return wc_get_cart_url();
         }
         return $url;
+    }
+
+    public static function add_order_item_meta( $item, $cart_item_key, $cart_item, $order ) {
+        if ( empty( $cart_item['stb'] ) || ! is_object( $item ) || ! method_exists( $item, 'add_meta_data' ) ) {
+            return;
+        }
+
+        $stb = $cart_item['stb'];
+        $payload = isset( $stb['payload'] ) && is_array( $stb['payload'] ) ? $stb['payload'] : [];
+
+        if ( ! empty( $payload ) ) {
+            $json = wp_json_encode( $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+            if ( $json ) {
+                $item->add_meta_data( 'Sticker Builder (JSON)', $json, true );
+            }
+        }
+
+        if ( empty( $payload['preview_png'] ) ) {
+            return;
+        }
+
+        $preview = $payload['preview_png'];
+
+        if ( strpos( $preview, 'data:image' ) === 0 ) {
+            $data = preg_replace( '#^data:image/[^;]+;base64,#', '', $preview );
+            $binary = base64_decode( $data, true );
+
+            if ( $binary ) {
+                $filename = 'stb-preview-' . uniqid() . '.png';
+                $upload = wp_upload_bits( $filename, null, $binary );
+
+                if ( empty( $upload['error'] ) && ! empty( $upload['url'] ) ) {
+                    $item->add_meta_data( 'Sticker Builder (preview)', esc_url_raw( $upload['url'] ), true );
+                    if ( ! empty( $upload['file'] ) ) {
+                        $item->add_meta_data( '_stb_preview_path', $upload['file'], true );
+                    }
+                }
+            }
+        } else {
+            $item->add_meta_data( 'Sticker Builder (preview)', esc_url_raw( $preview ), true );
+        }
     }
 }
 
