@@ -141,6 +141,7 @@
     const $  = (sel, root=document) => root.querySelector(sel);
     const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
     const byId = (id)=> document.getElementById(id);
+    const stbRoot = byId('stb-root');
 
     /* ===== Canvas (retina) ===== */
     const canvas = byId('stb-canvas');
@@ -261,6 +262,39 @@
     const step2Back   = byId('stb-step2-back');
     const uploadTrigger = byId('stb-upload-trigger');
     const uploadSummary = byId('stb-upload-summary');
+
+    const hasSvgElement = typeof SVGElement !== 'undefined';
+
+    function enforceStepButtonInk(){
+      const scope = stbRoot || document;
+      const buttons = scope.querySelectorAll('.btn-step');
+      buttons.forEach(btn => {
+        if (!(btn instanceof HTMLElement)) return;
+        btn.style.setProperty('color', '#fff', 'important');
+        btn.style.setProperty('-webkit-text-fill-color', '#fff', 'important');
+        btn.querySelectorAll('*').forEach(node => {
+          if (!(node instanceof Element)) return;
+          node.style.setProperty('color', '#fff', 'important');
+          node.style.setProperty('-webkit-text-fill-color', '#fff', 'important');
+          if (hasSvgElement && node instanceof SVGElement){
+            node.style.setProperty('stroke', 'currentColor');
+          }
+        });
+      });
+    }
+
+    enforceStepButtonInk();
+    const btnInkObserver = new MutationObserver(enforceStepButtonInk);
+    if (stbRoot){
+      btnInkObserver.observe(stbRoot, { childList:true, subtree:true, characterData:true });
+    } else {
+      btnInkObserver.observe(document.body || document.documentElement || document, { childList:true, subtree:true, characterData:true });
+    }
+    window.addEventListener('beforeunload', () => btnInkObserver.disconnect(), { once:true });
+    ['languagechange','gtranslate_language_changed','gt_language_changed'].forEach(evt => {
+      window.addEventListener(evt, enforceStepButtonInk);
+      document.addEventListener(evt, enforceStepButtonInk);
+    });
 
     // Toolbar
     const tbZoomOut = byId('tb-zoom-out');

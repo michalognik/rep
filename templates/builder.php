@@ -197,12 +197,10 @@ $stb_zero_net_markup = sprintf(
                     </section>
                 </div>
                 <div class="step-price-panel">
-                    <p class="price-timer" id="stb-price-timer" data-stb-price-timer aria-live="polite"></p>
                     <div class="price-box" data-stb-price-box>
                         <div class="total-val" id="stb-total" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
                         <div class="total-net" id="stb-total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
                         <div class="total-save" id="stb-total-save" data-stb-total-save aria-live="polite"></div>
-                        <div class="total-lead" id="stb-total-lead" data-stb-total-lead aria-live="polite"></div>
                     </div>
                 </div>
                 <div class="step-footer">
@@ -217,12 +215,39 @@ $stb_zero_net_markup = sprintf(
                         <h2 class="step-title">Projekt naklejki</h2>
                     </header>
                     <div class="step-options">
-                        <button type="button" class="btn btn-primary btn-step" id="stb-upload-trigger">Wgraj własny</button>
-                        <button type="button" class="btn btn-primary btn-step" id="stb-open-modal">Stwórz w kreatorze</button>
+                        <button type="button" class="btn btn-primary btn-step" id="stb-upload-trigger">
+                            <span class="btn-step-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                    <path d="M12 16V5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                                    <path d="M8 9l4-4 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                                    <path d="M5 16v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                                </svg>
+                            </span>
+                            <span class="btn-step-label">Wgraj</span>
+                        </button>
+                        <button type="button" class="btn btn-primary btn-step" id="stb-open-modal">
+                            <span class="btn-step-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                    <path d="M6 18l2-5 10-10 3 3-10 10-5 2z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"></path>
+                                    <path d="M14 4l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+                                    <path d="M5 19l4-1-3-3-1 4z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+                                </svg>
+                            </span>
+                            <span class="btn-step-label">Kreator</span>
+                        </button>
                     </div>
                     <p class="step-file-info" id="stb-upload-summary">Brak pliku</p>
                     <div class="cta">
                         <button type="button" class="btn btn-primary btn-step" id="stb-add">Dalej</button>
+                    </div>
+                    <div class="step-summary">
+                        <p class="price-timer" data-stb-price-timer aria-live="polite"></p>
+                        <div class="price-box" data-stb-price-box>
+                            <div class="total-val" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
+                            <div class="total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
+                            <div class="total-save" data-stb-total-save aria-live="polite"></div>
+                            <div class="total-lead" data-stb-total-lead aria-live="polite"></div>
+                        </div>
                     </div>
                 </div>
             </div>
