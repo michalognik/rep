@@ -143,6 +143,46 @@
 #stb-root .opt-custom.is-hidden{ max-height:0; opacity:0; margin-top:0; pointer-events:none }
 #stb-root .opt-custom:not(.is-hidden){ max-height:220px; opacity:1 }
 
+#stb-root .step-extra{ margin-top:6px; padding-top:12px; border-top:1px dashed var(--line); }
+#stb-root .step-extra-toggle{
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:4px 0;
+  border:none;
+  background:none;
+  color:var(--muted);
+  font-size:.82rem;
+  font-weight:700;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  cursor:pointer;
+}
+#stb-root .step-extra-toggle:focus-visible{
+  outline:none;
+  box-shadow:0 0 0 3px var(--focus-ring);
+  border-radius:8px;
+  padding:4px 8px;
+}
+#stb-root .step-extra-toggle::after{
+  content:"";
+  flex-shrink:0;
+  width:10px;
+  height:10px;
+  border-right:2px solid currentColor;
+  border-bottom:2px solid currentColor;
+  transform:rotate(45deg);
+  transition:transform .2s ease;
+}
+#stb-root .step-extra-toggle[aria-expanded="true"]::after{ transform:rotate(-135deg); }
+#stb-root .step-extra-body{ margin-top:12px; display:grid; gap:12px; }
+#stb-root .step-extra-body[hidden]{ display:none; }
+#stb-root .step-extra-option{ display:inline-flex; align-items:center; gap:10px; font-size:.86rem; color:var(--ink); }
+#stb-root .step-extra-option span{ font-size:.86rem; font-weight:600; color:var(--muted); }
+#stb-root .step-extra-option input[type="checkbox"]{ margin:0; }
+
 #stb-root .stb-field{ display:grid; gap:4px }
 #stb-root .stb-field .stb-lbl{ font-size:.72rem; color:var(--muted) !important; font-weight:600 }
 #stb-root input[type="number"],
@@ -385,7 +425,7 @@
   text-transform:uppercase;
   letter-spacing:.03em;
 }
-#stb-root .total-lead{
+#stb-root .total-lead{ 
   font-size:.82rem;
   color:var(--muted);
   text-align:right;
@@ -393,6 +433,11 @@
   align-items:center;
   justify-content:flex-end;
   gap:6px;
+}
+#stb-root .total-lead[data-express="1"],
+#stb-root [data-stb-total-lead][data-express="1"]{
+  color:var(--accent);
+  font-weight:700;
 }
 #stb-root .total-lead::before{
   content:"";

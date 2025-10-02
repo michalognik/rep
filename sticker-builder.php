@@ -437,6 +437,29 @@ final class WC_Sticker_Builder {
         $attachment_id = 0;
         $url           = '';
 
+        $express = false;
+        if ( isset( $values['stb']['express_production'] ) ) {
+            $express = ! empty( $values['stb']['express_production'] );
+        } elseif ( isset( $payload['express_production'] ) ) {
+            $express = ! empty( $payload['express_production'] );
+        }
+
+        if ( $express ) {
+            $item->add_meta_data( __( 'Przyspieszona realizacja', 'stb' ), __( 'tak', 'stb' ), true );
+            $item->add_meta_data( '_stb_express_production', 'yes', true );
+        }
+
+        $lead_days = null;
+        if ( isset( $values['stb']['lead_time_business_days'] ) ) {
+            $lead_days = max( 0, intval( $values['stb']['lead_time_business_days'] ) );
+        } elseif ( isset( $payload['lead_time_business_days'] ) ) {
+            $lead_days = max( 0, intval( $payload['lead_time_business_days'] ) );
+        }
+
+        if ( null !== $lead_days ) {
+            $item->add_meta_data( '_stb_lead_time_days', $lead_days, true );
+        }
+
         if ( ! empty( $values['stb']['file_upload_id'] ) ) {
             $attachment_id = absint( $values['stb']['file_upload_id'] );
         } elseif ( ! empty( $payload['file_upload_id'] ) ) {
@@ -667,6 +690,27 @@ final class WC_Sticker_Builder {
                 $cart_item_data['stb']['file_upload_size'] = max( 0, intval( $payload['file_upload_size'] ) );
                 $cart_item_data['stb']['payload']['file_upload_size'] = $cart_item_data['stb']['file_upload_size'];
             }
+
+            if ( isset( $payload['express_production'] ) ) {
+                $express = ! empty( $payload['express_production'] );
+                $cart_item_data['stb']['express_production'] = $express;
+                $cart_item_data['stb']['payload']['express_production'] = $express;
+            }
+
+            if ( isset( $payload['express_multiplier'] ) ) {
+                $multiplier = floatval( $payload['express_multiplier'] );
+                if ( $multiplier <= 0 ) {
+                    $multiplier = 1.0;
+                }
+                $cart_item_data['stb']['express_multiplier'] = $multiplier;
+                $cart_item_data['stb']['payload']['express_multiplier'] = $multiplier;
+            }
+
+            if ( isset( $payload['lead_time_business_days'] ) ) {
+                $lead_days = max( 0, intval( $payload['lead_time_business_days'] ) );
+                $cart_item_data['stb']['lead_time_business_days'] = $lead_days;
+                $cart_item_data['stb']['payload']['lead_time_business_days'] = $lead_days;
+            }
         }
 
         return $cart_item_data;
@@ -714,6 +758,23 @@ final class WC_Sticker_Builder {
                 'key'   => __( 'Laminat', 'stb' ),
                 'value' => $p['laminate'] ? 'tak' : 'nie',
             ];
+        }
+
+        if ( ! empty( $p['express_production'] ) ) {
+            $item_data[] = [
+                'key'   => __( 'Przyspieszona realizacja', 'stb' ),
+                'value' => __( 'tak', 'stb' ),
+            ];
+        }
+
+        if ( isset( $p['lead_time_business_days'] ) ) {
+            $lead_days = max( 0, intval( $p['lead_time_business_days'] ) );
+            if ( $lead_days > 0 ) {
+                $item_data[] = [
+                    'key'   => __( 'Termin (dni robocze)', 'stb' ),
+                    'value' => $lead_days,
+                ];
+            }
         }
 
         return $item_data;

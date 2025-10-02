@@ -258,6 +258,11 @@
     const materialEl = byId('stb-material');
     const materialGridEl = byId('stb-material-grid');
     const laminateEl = byId('stb-laminate');
+    const extraToggle = byId('stb-extra-toggle');
+    const extraBody = byId('stb-extra-body');
+    const extraMaterialSel = byId('stb-extra-material');
+    const extraLaminateEl = byId('stb-extra-laminate');
+    const expressEl = byId('stb-extra-express');
 
     // Rozmiary / ilość / cena
     const sizeList = byId('sizeList');
@@ -289,6 +294,15 @@
 
     const uploadLockEls = [imgEl, upBtn, delBtn, addBtn, step1Next, step2Back].filter(Boolean);
     let activeUploadXhr = null;
+
+    if (extraToggle && extraBody){
+      extraToggle.addEventListener('click', ()=>{
+        const expanded = extraToggle.getAttribute('aria-expanded') === 'true';
+        const next = !expanded;
+        extraToggle.setAttribute('aria-expanded', next ? 'true' : 'false');
+        extraBody.hidden = !next;
+      });
+    }
 
     function setUploadBusy(busy){
       uploadLockEls.forEach(el => {
@@ -508,6 +522,7 @@
     const sumLeadtimeEl = byId('sum-leadtime');
 
     const PRICE_TIMER_DURATION = 15 * 60 * 1000; // 15 minut
+    const EXPRESS_MULTIPLIER = 1.15;
     let priceTimerDeadline = null;
     let priceTimerInterval = null;
 
@@ -2147,6 +2162,28 @@
     }
 
     const materialTiles = [];
+    const syncQuickMaterial = (value) => {
+      if (!extraMaterialSel) return;
+      const target = value || '';
+      if (extraMaterialSel.value === target) return;
+      let hasOption = false;
+      const options = Array.from(extraMaterialSel.options || []);
+      for (const opt of options){
+        if (opt.value === target){ hasOption = true; break; }
+      }
+      if (!hasOption && target){
+        const optEl = document.createElement('option');
+        optEl.value = target;
+        optEl.textContent = target;
+        extraMaterialSel.appendChild(optEl);
+        hasOption = true;
+      }
+      if (hasOption){
+        extraMaterialSel.value = target;
+      } else if (extraMaterialSel.options.length){
+        extraMaterialSel.value = extraMaterialSel.options[0].value;
+      }
+    };
 
     const updateMaterialTiles = (value) => {
       const target = (value || '').toLowerCase();
@@ -2161,6 +2198,7 @@
         if (activeId) materialGridEl.setAttribute('aria-activedescendant', activeId);
         else materialGridEl.removeAttribute('aria-activedescendant');
       }
+      syncQuickMaterial(value);
     };
 
     const setMaterialValue = (value, { triggerChange = true } = {}) => {
@@ -2219,18 +2257,79 @@
       updateMaterialTiles(materialEl ? materialEl.value : '');
     }
 
+    if (extraMaterialSel && materialOptions.length){
+      extraMaterialSel.innerHTML = '';
+      materialOptions.forEach((option)=>{
+        if (!option) return;
+        const opt = document.createElement('option');
+        opt.value = option.value;
+        opt.textContent = option.label;
+        extraMaterialSel.appendChild(opt);
+      });
+      syncQuickMaterial(materialEl ? materialEl.value : extraMaterialSel.value);
+      extraMaterialSel.addEventListener('change', ()=>{
+        setMaterialValue(extraMaterialSel.value);
+      });
+    } else if (extraMaterialSel){
+      extraMaterialSel.addEventListener('change', ()=>{
+        setMaterialValue(extraMaterialSel.value);
+      });
+    }
+
     function materialMultiplier(){
       const v = (materialEl && (materialEl.value||'')).toLowerCase();
       if (v.indexOf('długo') !== -1 || v.indexOf('dlugo') !== -1) return 1.5; // folia długowieczna
       return 1.0; // ekonomiczna lub inne
     }
-    if (materialEl) materialEl.addEventListener('change', ()=>{
-      updateMaterialTiles(materialEl.value);
-      updatePriceAndJSON();
-      refreshQtyPrices();
-      updateSummaryMeta();
-    });
-    if (laminateEl) laminateEl.addEventListener('change', ()=>{ updatePriceAndJSON(); refreshQtyPrices(); updateSummaryMeta(); requestDraw(); });
+    if (materialEl){
+      materialEl.addEventListener('change', ()=>{
+        updateMaterialTiles(materialEl.value);
+        updatePriceAndJSON();
+        refreshQtyPrices();
+        updateSummaryMeta();
+      });
+      syncQuickMaterial(materialEl.value);
+    }
+
+    const syncQuickLaminate = ()=>{
+      if (!extraLaminateEl) return;
+      extraLaminateEl.checked = !!(laminateEl && laminateEl.checked);
+    };
+
+    if (laminateEl){
+      laminateEl.addEventListener('change', ()=>{
+        syncQuickLaminate();
+        updatePriceAndJSON();
+        refreshQtyPrices();
+        updateSummaryMeta();
+        requestDraw();
+      });
+      syncQuickLaminate();
+    }
+    if (extraLaminateEl){
+      extraLaminateEl.addEventListener('change', ()=>{
+        if (laminateEl && laminateEl.checked !== extraLaminateEl.checked){
+          laminateEl.checked = extraLaminateEl.checked;
+          laminateEl.dispatchEvent(new Event('change', { bubbles:true }));
+        } else {
+          updatePriceAndJSON();
+          refreshQtyPrices();
+          updateSummaryMeta();
+          requestDraw();
+        }
+      });
+      if (!laminateEl){
+        syncQuickLaminate();
+      }
+    }
+
+    if (expressEl){
+      expressEl.addEventListener('change', ()=>{
+        updatePriceAndJSON();
+        refreshQtyPrices();
+        updateSummaryMeta();
+      });
+    }
 
     /* ===== Tekst ===== */
     const refreshFontPreview = ()=>{
@@ -2411,8 +2510,10 @@
 
       if (total<99) total=99;
       if (laminateEl && laminateEl.checked){ total *= 1.15; } // LAMINAT +15%
+      const expressEnabled = !!(expressEl && expressEl.checked);
+      if (expressEnabled){ total *= EXPRESS_MULTIPLIER; }
       const net=total/1.23;
-      return { total, net, rate, areaOne, total_area, qty };
+      return { total, net, rate, areaOne, total_area, qty, express: expressEnabled, express_multiplier: expressEnabled ? EXPRESS_MULTIPLIER : 1 };
     }
     function computeBaselineA(q){ const areaOne=computeAreaM2(); const qty=Math.max(1, Math.floor(q||1)); return areaOne*200*qty; }
 
@@ -2523,9 +2624,21 @@
       const c = calc || computeTotalForQty(qty);
       const days = leadTimeBusinessDays(c.total_area || 0);
       const target = addBusinessDays(new Date(), days);
-      const leadText = 'Wysyłka do ' + formatPLDateOnly(target);
-      if (sumLeadtimeEl) sumLeadtimeEl.textContent = leadText;
-      totalLeadOutEls.forEach((el)=>{ el.textContent = leadText; });
+      const expressEnabled = !!(expressEl && expressEl.checked);
+      let leadText = 'Wysyłka do ' + formatPLDateOnly(target);
+      if (expressEnabled){
+        leadText += ' • przyspieszona realizacja';
+      }
+      if (sumLeadtimeEl){
+        sumLeadtimeEl.textContent = leadText;
+        if (expressEnabled){ sumLeadtimeEl.dataset.express = '1'; }
+        else { delete sumLeadtimeEl.dataset.express; }
+      }
+      totalLeadOutEls.forEach((el)=>{
+        el.textContent = leadText;
+        if (expressEnabled){ el.dataset.express = '1'; }
+        else { delete el.dataset.express; }
+      });
     }
 
     // popup do wyceny
@@ -2591,6 +2704,8 @@
     function updatePriceAndJSON(){
       const qty = getCurrentQty();
       const calc = computeTotalForQty(qty);
+      const expressEnabled = !!calc.express;
+      const leadDays = leadTimeBusinessDays(calc.total_area || 0);
       const baseline = computeBaselineA(qty);
       let pctSave = 0;
       if (baseline > 0.0001){
@@ -2659,6 +2774,9 @@
           total_price_net_pln: +calc.net.toFixed(2),
           material: (materialEl && materialEl.value) ? materialEl.value : 'Folia ekonomiczna',
           laminate: !!(laminateEl && laminateEl.checked),
+          express_production: expressEnabled,
+          express_multiplier: calc.express_multiplier || 1,
+          lead_time_business_days: leadDays,
           file: uploaded.name ? { name: uploaded.name, type: uploaded.type, size: uploaded.size, url: uploaded.url || null, upload_id: uploaded.uploadId || null } : null,
           text: {
             value: textObj.text || '',

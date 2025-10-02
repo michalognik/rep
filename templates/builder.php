@@ -195,6 +195,25 @@ $stb_zero_net_markup = sprintf(
                             </div>
                         </div>
                     </section>
+                    <div class="step-extra" id="stb-extra">
+                        <button type="button" class="step-extra-toggle" id="stb-extra-toggle" aria-expanded="false" aria-controls="stb-extra-body">
+                            <span class="step-extra-label"><?php esc_html_e( 'Parametry dodatkowe', 'sticker-builder' ); ?></span>
+                        </button>
+                        <div class="step-extra-body" id="stb-extra-body" hidden>
+                            <label class="stb-field">
+                                <span class="stb-lbl"><?php esc_html_e( 'Typ folii', 'sticker-builder' ); ?></span>
+                                <select id="stb-extra-material" aria-label="<?php esc_attr_e( 'Typ folii', 'sticker-builder' ); ?>"></select>
+                            </label>
+                            <label class="stb-inline step-extra-option" for="stb-extra-laminate">
+                                <input type="checkbox" id="stb-extra-laminate">
+                                <span><?php esc_html_e( 'Wykończenie: laminat ochronny', 'sticker-builder' ); ?></span>
+                            </label>
+                            <label class="stb-inline step-extra-option" for="stb-extra-express">
+                                <input type="checkbox" id="stb-extra-express">
+                                <span><?php esc_html_e( 'Przyspiesz realizację (+15%)', 'sticker-builder' ); ?></span>
+                            </label>
+                        </div>
+                    </div>
                 </div>
                 <div class="step-price-panel">
                     <div class="price-box" data-stb-price-box>
@@ -205,6 +224,7 @@ $stb_zero_net_markup = sprintf(
                             <span class="total-unit-label"><?php esc_html_e( 'cena/szt.', 'sticker-builder' ); ?></span>
                         </div>
                         <div class="total-save" id="stb-total-save" data-stb-total-save aria-live="polite"></div>
+                        <div class="total-lead" data-stb-total-lead aria-live="polite"></div>
                     </div>
                 </div>
                 <div class="step-footer">
