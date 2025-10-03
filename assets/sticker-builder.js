@@ -642,6 +642,18 @@
       if (extraFinishSel && typeof extraFinishSel.value === 'string' && extraFinishSel.value !== ''){ return extraFinishSel.value; }
       return 'gloss';
     };
+    const finishLabel = (value)=>{
+      const val = (typeof value === 'string' && value) ? value : currentFinishValue();
+      const source = finishEl || extraFinishSel;
+      if (source && source.options){
+        const opts = Array.from(source.options);
+        const match = opts.find(opt => opt && opt.value === val);
+        if (match && typeof match.textContent === 'string'){ return match.textContent.trim(); }
+      }
+      if (val === 'mat') return 'Mat';
+      if (val === 'gloss') return 'Połysk';
+      return val || '—';
+    };
     const defaultFinishValue = currentFinishValue();
     let extraPanelUsed = false;
 
@@ -2682,19 +2694,6 @@
         return h + ':' + m;
       }
     }
-
-    const finishLabel = (value)=>{
-      const val = (typeof value === 'string' && value) ? value : currentFinishValue();
-      const source = finishEl || extraFinishSel;
-      if (source && source.options){
-        const opts = Array.from(source.options);
-        const match = opts.find(opt => opt && opt.value === val);
-        if (match && typeof match.textContent === 'string'){ return match.textContent.trim(); }
-      }
-      if (val === 'mat') return 'Mat';
-      if (val === 'gloss') return 'Połysk';
-      return val || '—';
-    };
 
     function hasExtraSelectionsChanged(){
       const materialCurrent = materialEl ? (materialEl.value || '') : '';
