@@ -208,11 +208,18 @@ $stb_zero_net_markup = sprintf(
                                 <select id="stb-extra-material" aria-label="<?php esc_attr_e( 'Typ folii', 'sticker-builder' ); ?>"></select>
                             </label>
                         </div>
-                        <div class="step-extra-material" role="group" aria-labelledby="stb-extra-material-grid-label">
-                            <span class="stb-lbl" id="stb-extra-material-grid-label"><?php esc_html_e( 'Typ folii', 'sticker-builder' ); ?></span>
-                            <div class="step-extra-material-scroll" role="presentation">
-                                <div class="stb-material-grid" id="stb-extra-material-grid" role="listbox" aria-labelledby="stb-extra-material-grid-label"></div>
-                            </div>
+                        <div class="step-extra-select">
+                            <label class="stb-field">
+                                <span class="stb-lbl"><?php esc_html_e( 'Kształt', 'sticker-builder' ); ?></span>
+                                <select id="stb-extra-shape" aria-label="<?php esc_attr_e( 'Kształt', 'sticker-builder' ); ?>">
+                                    <option value="rect"><?php esc_html_e( 'Prostokąt', 'sticker-builder' ); ?></option>
+                                    <option value="circle"><?php esc_html_e( 'Koło', 'sticker-builder' ); ?></option>
+                                    <option value="ellipse"><?php esc_html_e( 'Elipsa', 'sticker-builder' ); ?></option>
+                                    <option value="triangle"><?php esc_html_e( 'Trójkąt', 'sticker-builder' ); ?></option>
+                                    <option value="octagon"><?php esc_html_e( 'Ośmiokąt', 'sticker-builder' ); ?></option>
+                                    <option value="diecut"><?php esc_html_e( 'Dowolny kształt (DIECUT)', 'sticker-builder' ); ?></option>
+                                </select>
+                            </label>
                         </div>
                         <div class="step-extra-options">
                             <label class="stb-inline step-extra-option" for="stb-extra-laminate">
@@ -235,6 +242,33 @@ $stb_zero_net_markup = sprintf(
                             <span class="total-unit-label"><?php esc_html_e( 'cena/szt.', 'sticker-builder' ); ?></span>
                         </div>
                         <div class="total-save" id="stb-total-save" data-stb-total-save aria-live="polite"></div>
+                    </div>
+                    <div class="step-config-panel" id="stb-extra-summary" hidden>
+                        <div class="config-box">
+                            <p class="config-box-title"><?php esc_html_e( 'Parametry naklejki', 'sticker-builder' ); ?></p>
+                            <dl class="config-box-list">
+                                <div class="config-box-row">
+                                    <dt><?php esc_html_e( 'Kształt', 'sticker-builder' ); ?></dt>
+                                    <dd id="sum-shape">&mdash;</dd>
+                                </div>
+                                <div class="config-box-row">
+                                    <dt><?php esc_html_e( 'Typ folii', 'sticker-builder' ); ?></dt>
+                                    <dd id="sum-material">&mdash;</dd>
+                                </div>
+                                <div class="config-box-row">
+                                    <dt><?php esc_html_e( 'Laminat', 'sticker-builder' ); ?></dt>
+                                    <dd id="sum-laminate">&mdash;</dd>
+                                </div>
+                                <div class="config-box-row">
+                                    <dt><?php esc_html_e( 'Realizacja', 'sticker-builder' ); ?></dt>
+                                    <dd id="sum-express">&mdash;</dd>
+                                </div>
+                            </dl>
+                            <div class="config-box-shipping">
+                                <span class="config-box-shipping-label"><?php esc_html_e( 'Szacowana wysyłka', 'sticker-builder' ); ?></span>
+                                <span class="config-box-shipping-date" id="sum-leadtime">&mdash;</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="step-footer">
@@ -617,6 +651,7 @@ $stb_zero_net_markup = sprintf(
     <div class="stb-modal__backdrop" data-close></div>
     <div class="stb-modal__content">
         <button type="button" class="btn stb-modal__close" id="stb-close-modal">✕</button>
+        <div class="stb-modal__main" id="stb-modal-main"></div>
         <div class="stb-modal__summary">
             <div class="price-box" data-stb-price-box>
                 <div class="total-val" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>

@@ -265,6 +265,8 @@
     const extraMaterialGridEl = byId('stb-extra-material-grid');
     const extraLaminateEl = byId('stb-extra-laminate');
     const expressEl = byId('stb-extra-express');
+    const extraShapeSel = byId('stb-extra-shape');
+    const extraSummaryWrap = byId('stb-extra-summary');
 
     // Rozmiary / ilość / cena
     const sizeList = byId('sizeList');
@@ -534,6 +536,7 @@
     const sumShapeEl    = byId('sum-shape');
     const sumMaterialEl = byId('sum-material');
     const sumLaminateEl = byId('sum-laminate');
+    const sumExpressEl  = byId('sum-express');
     const sumLeadtimeEl = byId('sum-leadtime');
 
     const EXPRESS_MULTIPLIER = 1.15;
@@ -631,6 +634,11 @@
 
     // shapes: rect|circle|ellipse|triangle|octagon|diecut
     let shape='rect', ellipseRatio=1.0;
+    const defaultShapeValue = shape;
+    const defaultLaminateValue = !!(laminateEl && laminateEl.checked);
+    const defaultExpressValue = !!(expressEl && expressEl.checked);
+    let defaultMaterialValue = materialEl ? (materialEl.value || '') : '';
+    let extraPanelUsed = false;
 
     const defaultTextObj = ()=>({
       text:'',
@@ -1004,7 +1012,7 @@
       if (contrast > 1.6) return false;
       return colorDistance(o,bg) < 80;
     };
-    const shapeLabel = (s)=>({ rect:'Prostokąt', circle:'Koło', ellipse:'Elipsa', triangle:'Trójkąt', octagon:'Ośmiokąt', diecut:'DIECUT' }[s] || '—');
+    const shapeLabel = (s)=>({ rect:'Prostokąt', circle:'Koło', ellipse:'Elipsa', triangle:'Trójkąt', octagon:'Ośmiokąt', diecut:'Dowolny kształt (DIECUT)' }[s] || '—');
 
     /* ===== Geometria ===== */
     function polygonPath(c, points, radius){
@@ -2071,6 +2079,27 @@
     }
 
     function updateShapeUI(){
+      if (shapeGrid){
+        $$('.shape-btn', shapeGrid).forEach(btn => {
+          const val = btn.getAttribute('data-shape') || 'rect';
+          const isActive = val === shape;
+          btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
+      }
+      if (extraShapeSel){
+        const options = Array.from(extraShapeSel.options || []);
+        const hasOption = options.some(opt => opt.value === shape);
+        if (!hasOption && shape){
+          const opt = document.createElement('option');
+          opt.value = shape;
+          opt.textContent = shapeLabel(shape);
+          extraShapeSel.appendChild(opt);
+        }
+        if (extraShapeSel.value !== shape){
+          extraShapeSel.value = shape;
+        }
+      }
+
       const dis = (shape==='ellipse' || shape==='circle' || shape==='diecut');
       if (cornerEl) cornerEl.disabled = dis;
       if (ellipseRow) ellipseRow.style.display = (shape==='ellipse') ? '' : 'none';
@@ -2089,9 +2118,15 @@
     if (shapeGrid){
       shapeGrid.addEventListener('click', (e)=>{
         const btn = e.target.closest('.shape-btn'); if(!btn) return;
-        $$('.shape-btn', shapeGrid).forEach(b=>b.setAttribute('aria-pressed','false'));
-        btn.setAttribute('aria-pressed','true');
         shape = btn.getAttribute('data-shape') || 'rect';
+        updateShapeUI();
+      });
+    }
+    if (extraShapeSel){
+      extraShapeSel.addEventListener('change', ()=>{
+        markExtraUsed();
+        const next = extraShapeSel.value || 'rect';
+        shape = next;
         updateShapeUI();
       });
     }
@@ -2167,6 +2202,10 @@
       if (!materialEl.value){
         materialEl.value = materialOptions[0].value;
       }
+    }
+
+    if (materialEl && !defaultMaterialValue){
+      defaultMaterialValue = materialEl.value || '';
     }
 
     const materialTiles = [];
@@ -2295,10 +2334,12 @@
       });
       syncQuickMaterial(materialEl ? materialEl.value : extraMaterialSel.value);
       extraMaterialSel.addEventListener('change', ()=>{
+        markExtraUsed();
         setMaterialValue(extraMaterialSel.value);
       });
     } else if (extraMaterialSel){
       extraMaterialSel.addEventListener('change', ()=>{
+        markExtraUsed();
         setMaterialValue(extraMaterialSel.value);
       });
     }
@@ -2335,6 +2376,7 @@
     }
     if (extraLaminateEl){
       extraLaminateEl.addEventListener('change', ()=>{
+        markExtraUsed();
         if (laminateEl && laminateEl.checked !== extraLaminateEl.checked){
           laminateEl.checked = extraLaminateEl.checked;
           laminateEl.dispatchEvent(new Event('change', { bubbles:true }));
@@ -2352,6 +2394,7 @@
 
     if (expressEl){
       expressEl.addEventListener('change', ()=>{
+        markExtraUsed();
         updatePriceAndJSON();
         refreshQtyPrices();
         updateSummaryMeta();
@@ -2604,19 +2647,69 @@
       }
     }
 
+    function hasExtraSelectionsChanged(){
+      const materialCurrent = materialEl ? (materialEl.value || '') : '';
+      const materialChanged = materialCurrent !== defaultMaterialValue;
+      const laminateChanged = (!!(laminateEl && laminateEl.checked)) !== defaultLaminateValue;
+      const expressChanged = (!!(expressEl && expressEl.checked)) !== defaultExpressValue;
+      const shapeChanged = shape !== defaultShapeValue;
+      return materialChanged || laminateChanged || expressChanged || shapeChanged;
+    }
+
+    function updateConfigSummary(calc){
+      if (!extraSummaryWrap) return;
+      const show = extraPanelUsed || hasExtraSelectionsChanged();
+      if (!show){
+        extraSummaryWrap.hidden = true;
+        if (sumLeadtimeEl){
+          sumLeadtimeEl.textContent = '—';
+          delete sumLeadtimeEl.dataset.express;
+        }
+        return;
+      }
+
+      extraSummaryWrap.hidden = false;
+      const qty = getCurrentQty();
+      const summaryCalc = calc || computeTotalForQty(qty);
+      const expressEnabled = !!(expressEl && expressEl.checked);
+
+      if (sumShapeEl) sumShapeEl.textContent = shapeLabel(shape);
+      if (sumMaterialEl) sumMaterialEl.textContent = materialEl?.value || 'Folia ekonomiczna';
+      if (sumLaminateEl) sumLaminateEl.textContent = (laminateEl && laminateEl.checked) ? 'Tak' : 'Nie';
+      if (sumExpressEl) sumExpressEl.textContent = expressEnabled ? 'Przyspieszona (+15%)' : 'Standardowa';
+
+      let leadDays = leadTimeBusinessDays(summaryCalc.total_area || 0);
+      if (expressEnabled){ leadDays = Math.max(0, leadDays - 1); }
+      else if (leadDays < 0){ leadDays = 0; }
+
+      if (sumLeadtimeEl){
+        const shipDate = addBusinessDays(new Date(), leadDays);
+        sumLeadtimeEl.textContent = formatPLDateOnly(shipDate);
+        if (expressEnabled){ sumLeadtimeEl.dataset.express = '1'; }
+        else { delete sumLeadtimeEl.dataset.express; }
+      }
+    }
+
+    const markExtraUsed = ()=>{
+      if (!extraPanelUsed){ extraPanelUsed = true; }
+      updateConfigSummary();
+    };
+
     function updateSummaryMeta(calc){
-      if (sumShapeEl)    sumShapeEl.textContent = 'Kształt: ' + shapeLabel(shape);
-      if (sumMaterialEl) sumMaterialEl.textContent = 'Materiał: ' + (materialEl?.value || 'Folia ekonomiczna');
-      if (sumLaminateEl) sumLaminateEl.textContent = 'Laminat: ' + (laminateEl?.checked ? 'tak' : 'nie');
+      if (sumShapeEl)    sumShapeEl.textContent = shapeLabel(shape);
+      if (sumMaterialEl) sumMaterialEl.textContent = materialEl?.value || 'Folia ekonomiczna';
+      if (sumLaminateEl) sumLaminateEl.textContent = (laminateEl && laminateEl.checked) ? 'Tak' : 'Nie';
 
       const qty = getCurrentQty();
       const c = calc || computeTotalForQty(qty);
       const expressEnabled = !!(expressEl && expressEl.checked);
+      if (sumExpressEl) sumExpressEl.textContent = expressEnabled ? 'Przyspieszona (+15%)' : 'Standardowa';
       if (sumLeadtimeEl){
         sumLeadtimeEl.textContent = '';
-        if (expressEnabled){ sumLeadtimeEl.dataset.express = '1'; }
-        else { delete sumLeadtimeEl.dataset.express; }
+        delete sumLeadtimeEl.dataset.express;
       }
+
+      updateConfigSummary(c);
     }
 
     // popup do wyceny
@@ -3364,6 +3457,7 @@
     /* ===== Modal ===== */
     const modal = byId('stb-modal');
     const modalContent = modal ? modal.querySelector('.stb-modal__content') : null;
+    const modalMain = byId('stb-modal-main');
     const openBtn = byId('stb-open-modal');
     const closeBtn = byId('stb-close-modal');
     const backdrop = modal ? modal.querySelector('[data-close]') : null;
@@ -3377,9 +3471,10 @@
     }
     function openModal(){
       ensureModalInBody();
-      if (!modal || !modalContent || !designer) return;
+      const host = modalMain || modalContent;
+      if (!modal || !host || !designer) return;
       if (!placeholder.parentNode){ designer.parentNode.insertBefore(placeholder, designer); }
-      modalContent.appendChild(designer);
+      host.appendChild(designer);
       window.scrollTo(0,0);
       const sb = window.innerWidth - document.documentElement.clientWidth;
       if (sb>0) document.body.style.paddingRight = sb + 'px';
