@@ -785,7 +785,7 @@ final class WC_Sticker_Builder {
         $src = $cart_item['stb']['payload']['preview_png'];
         $safe = esc_url( $src );
         if ( strpos( $src, 'data:image' ) === 0 ) { $safe = $src; }
-        return '<img src="' . $safe . '" alt="' . esc_attr__( 'Podgląd', 'stb' ) . '" style="width:70px;height:auto;border-radius:6px;border:1px solid #e5e5e5;" />';
+        return '<img src="' . $safe . '" alt="' . esc_attr__( 'Podgląd', 'stb' ) . '" style="width:70px;height:auto;border-radius:8px;border:1px solid #e5e5e5;" />';
     }
 
     public static function maybe_redirect_to_cart( $url ) {

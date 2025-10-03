@@ -195,15 +195,25 @@ $stb_zero_net_markup = sprintf(
                             </div>
                         </div>
                     </section>
-                    <div class="step-extra" id="stb-extra">
-                        <button type="button" class="step-extra-toggle" id="stb-extra-toggle" aria-expanded="false" aria-controls="stb-extra-body">
-                            <span class="step-extra-label"><?php esc_html_e( 'Parametry dodatkowe', 'sticker-builder' ); ?></span>
-                        </button>
-                        <div class="step-extra-body" id="stb-extra-body" hidden>
+                </div>
+                <div class="step-extra" id="stb-extra">
+                    <button type="button" class="step-extra-toggle" id="stb-extra-toggle" aria-expanded="false" aria-controls="stb-extra-body">
+                        <span class="step-extra-label"><?php esc_html_e( 'Parametry dodatkowe', 'sticker-builder' ); ?></span>
+                    </button>
+                    <div class="step-extra-body" id="stb-extra-body" hidden>
+                        <div class="step-extra-select">
                             <label class="stb-field">
                                 <span class="stb-lbl"><?php esc_html_e( 'Typ folii', 'sticker-builder' ); ?></span>
                                 <select id="stb-extra-material" aria-label="<?php esc_attr_e( 'Typ folii', 'sticker-builder' ); ?>"></select>
                             </label>
+                        </div>
+                        <div class="step-extra-material" role="group" aria-labelledby="stb-extra-material-grid-label">
+                            <span class="stb-lbl" id="stb-extra-material-grid-label"><?php esc_html_e( 'Typ folii', 'sticker-builder' ); ?></span>
+                            <div class="step-extra-material-scroll" role="presentation">
+                                <div class="stb-material-grid" id="stb-extra-material-grid" role="listbox" aria-labelledby="stb-extra-material-grid-label"></div>
+                            </div>
+                        </div>
+                        <div class="step-extra-options">
                             <label class="stb-inline step-extra-option" for="stb-extra-laminate">
                                 <input type="checkbox" id="stb-extra-laminate">
                                 <span><?php esc_html_e( 'Wykończenie: laminat ochronny', 'sticker-builder' ); ?></span>
@@ -224,7 +234,6 @@ $stb_zero_net_markup = sprintf(
                             <span class="total-unit-label"><?php esc_html_e( 'cena/szt.', 'sticker-builder' ); ?></span>
                         </div>
                         <div class="total-save" id="stb-total-save" data-stb-total-save aria-live="polite"></div>
-                        <div class="total-lead" data-stb-total-lead aria-live="polite"></div>
                     </div>
                 </div>
                 <div class="step-footer">
@@ -265,7 +274,6 @@ $stb_zero_net_markup = sprintf(
                         <button type="button" class="btn btn-primary btn-step" id="stb-add">Dalej</button>
                     </div>
                     <div class="step-summary">
-                        <p class="price-timer" data-stb-price-timer aria-live="polite"></p>
                         <div class="price-box" data-stb-price-box>
                             <div class="total-val" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
                             <div class="total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
@@ -273,8 +281,7 @@ $stb_zero_net_markup = sprintf(
                                 <span class="total-unit-value" data-stb-total-unit><?php echo wp_kses_post( $stb_zero_price_markup ); ?></span>
                                 <span class="total-unit-label"><?php esc_html_e( 'cena/szt.', 'sticker-builder' ); ?></span>
                             </div>
-                            <div class="total-save" data-stb-total-save aria-live="polite"></div>
-                            <div class="total-lead" data-stb-total-lead aria-live="polite"></div>
+                        <div class="total-save" data-stb-total-save aria-live="polite"></div>
                         </div>
                     </div>
                 </div>
@@ -610,7 +617,6 @@ $stb_zero_net_markup = sprintf(
     <div class="stb-modal__content">
         <button type="button" class="btn stb-modal__close" id="stb-close-modal">✕</button>
         <div class="stb-modal__summary">
-            <p class="price-timer" data-stb-price-timer aria-live="polite"></p>
             <div class="price-box" data-stb-price-box>
                 <div class="total-val" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
                 <div class="total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
@@ -619,7 +625,6 @@ $stb_zero_net_markup = sprintf(
                     <span class="total-unit-label"><?php esc_html_e( 'cena/szt.', 'sticker-builder' ); ?></span>
                 </div>
                 <div class="total-save" data-stb-total-save aria-live="polite"></div>
-                <div class="total-lead" data-stb-total-lead aria-live="polite"></div>
             </div>
         </div>
     </div>

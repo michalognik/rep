@@ -260,7 +260,9 @@
     const laminateEl = byId('stb-laminate');
     const extraToggle = byId('stb-extra-toggle');
     const extraBody = byId('stb-extra-body');
+    const extraWrap = byId('stb-extra');
     const extraMaterialSel = byId('stb-extra-material');
+    const extraMaterialGridEl = byId('stb-extra-material-grid');
     const extraLaminateEl = byId('stb-extra-laminate');
     const expressEl = byId('stb-extra-express');
 
@@ -281,8 +283,6 @@
     const totalNetOutEls  = $$('[data-stb-total-net]');
     const totalUnitOutEls = $$('[data-stb-total-unit]');
     const totalSaveOutEls = $$('[data-stb-total-save]');
-    const totalLeadOutEls = $$('[data-stb-total-lead]');
-    const priceTimerEls   = $$('[data-stb-price-timer]');
     const addBtn      = byId('stb-add');
 
     const step1       = byId('stb-step-1');
@@ -295,14 +295,29 @@
     const uploadLockEls = [imgEl, upBtn, delBtn, addBtn, step1Next, step2Back].filter(Boolean);
     let activeUploadXhr = null;
 
+    const syncExtraPanelState = () => {
+      const expanded = !!(extraToggle && extraToggle.getAttribute('aria-expanded') === 'true');
+      if (extraWrap){
+        if (expanded){ extraWrap.classList.add('is-expanded'); }
+        else { extraWrap.classList.remove('is-expanded'); }
+      }
+      if (step1){
+        if (expanded){ step1.classList.add('extra-open'); }
+        else { step1.classList.remove('extra-open'); }
+      }
+    };
+
     if (extraToggle && extraBody){
       extraToggle.addEventListener('click', ()=>{
         const expanded = extraToggle.getAttribute('aria-expanded') === 'true';
         const next = !expanded;
         extraToggle.setAttribute('aria-expanded', next ? 'true' : 'false');
         extraBody.hidden = !next;
+        syncExtraPanelState();
       });
     }
+
+    syncExtraPanelState();
 
     function setUploadBusy(busy){
       uploadLockEls.forEach(el => {
@@ -521,10 +536,7 @@
     const sumLaminateEl = byId('sum-laminate');
     const sumLeadtimeEl = byId('sum-leadtime');
 
-    const PRICE_TIMER_DURATION = 15 * 60 * 1000; // 15 minut
     const EXPRESS_MULTIPLIER = 1.15;
-    let priceTimerDeadline = null;
-    let priceTimerInterval = null;
 
     /* ===== Kroki ===== */
     const steps = [step1, step2];
@@ -581,10 +593,6 @@
     }
 
     showStep(currentStep || 1);
-
-    if (priceTimerEls.length){
-      window.addEventListener('beforeunload', stopPriceTimer, { once:true });
-    }
 
     // Tekst
     const textInput     = byId('stb-text-input');
@@ -2187,17 +2195,21 @@
 
     const updateMaterialTiles = (value) => {
       const target = (value || '').toLowerCase();
-      let activeId = null;
-      materialTiles.forEach(({ option, el }) => {
+      const activeMap = new Map();
+      materialTiles.forEach(({ option, el, grid }) => {
         const isActive = option.value.toLowerCase() === target;
         el.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         el.setAttribute('aria-selected', isActive ? 'true' : 'false');
-        if (isActive) activeId = el.id;
+        if (isActive && grid){
+          activeMap.set(grid, el.id);
+        }
       });
-      if (materialGridEl){
-        if (activeId) materialGridEl.setAttribute('aria-activedescendant', activeId);
-        else materialGridEl.removeAttribute('aria-activedescendant');
-      }
+      [materialGridEl, extraMaterialGridEl].forEach((grid) => {
+        if (!grid) return;
+        const activeId = activeMap.get(grid);
+        if (activeId){ grid.setAttribute('aria-activedescendant', activeId); }
+        else { grid.removeAttribute('aria-activedescendant'); }
+      });
       syncQuickMaterial(value);
     };
 
@@ -2212,49 +2224,64 @@
       }
     };
 
+    const buildMaterialTile = (option, index, gridEl, suffix = '') => {
+      if (!gridEl || !option) return;
+      const tile = document.createElement('button');
+      tile.type = 'button';
+      tile.className = 'material-tile';
+      const baseId = option.id || `stb-material-${index}`;
+      tile.id = suffix ? `${baseId}-${suffix}` : baseId;
+      tile.dataset.value = option.value;
+      tile.setAttribute('role', 'option');
+      tile.setAttribute('aria-pressed', 'false');
+      tile.setAttribute('aria-selected', 'false');
+      tile.setAttribute('aria-label', option.label);
+      tile.dataset.image = option.image || '';
+      if (option.image){
+        tile.style.setProperty('--material-image', `url("${option.image}")`);
+      }
+
+      const image = document.createElement('span');
+      image.className = 'material-tile__image';
+      tile.appendChild(image);
+
+      const caption = document.createElement('span');
+      caption.className = 'material-tile__name';
+      const primaryText = option.shortLabel || option.label;
+      const strongLine = document.createElement('strong');
+      strongLine.textContent = primaryText;
+      caption.appendChild(strongLine);
+      if (option.note){
+        const noteLine = document.createElement('small');
+        noteLine.textContent = option.note;
+        caption.appendChild(noteLine);
+      }
+      tile.title = option.note ? `${option.label} — ${option.note}` : option.label;
+      tile.appendChild(caption);
+
+      tile.addEventListener('click', () => setMaterialValue(option.value));
+
+      materialTiles.push({ option, el: tile, grid: gridEl });
+      gridEl.appendChild(tile);
+    };
+
     if (materialGridEl && materialOptions.length){
       materialGridEl.setAttribute('aria-multiselectable', 'false');
       materialGridEl.innerHTML = '';
       materialOptions.forEach((option, index) => {
         if (!option) return;
-        const tile = document.createElement('button');
-        tile.type = 'button';
-        tile.className = 'material-tile';
-        tile.id = option.id || `stb-material-${index}`;
-        tile.dataset.value = option.value;
-        tile.setAttribute('role', 'option');
-        tile.setAttribute('aria-pressed', 'false');
-        tile.setAttribute('aria-selected', 'false');
-        tile.setAttribute('aria-label', option.label);
-        tile.dataset.image = option.image || '';
-        if (option.image){
-          tile.style.setProperty('--material-image', `url("${option.image}")`);
-        }
-
-        const image = document.createElement('span');
-        image.className = 'material-tile__image';
-        tile.appendChild(image);
-
-        const caption = document.createElement('span');
-        caption.className = 'material-tile__name';
-        const primaryText = option.shortLabel || option.label;
-        const strongLine = document.createElement('strong');
-        strongLine.textContent = primaryText;
-        caption.appendChild(strongLine);
-        if (option.note){
-          const noteLine = document.createElement('small');
-          noteLine.textContent = option.note;
-          caption.appendChild(noteLine);
-        }
-        tile.title = option.note ? `${option.label} — ${option.note}` : option.label;
-        tile.appendChild(caption);
-
-        tile.addEventListener('click', () => setMaterialValue(option.value));
-
-        materialTiles.push({ option, el: tile });
-        materialGridEl.appendChild(tile);
+        buildMaterialTile(option, index, materialGridEl);
       });
       updateMaterialTiles(materialEl ? materialEl.value : '');
+    }
+
+    if (extraMaterialGridEl && materialOptions.length){
+      extraMaterialGridEl.setAttribute('aria-multiselectable', 'false');
+      extraMaterialGridEl.innerHTML = '';
+      materialOptions.forEach((option, index) => {
+        if (!option) return;
+        buildMaterialTile(option, index, extraMaterialGridEl, 'extra');
+      });
     }
 
     if (extraMaterialSel && materialOptions.length){
@@ -2577,44 +2604,6 @@
       }
     }
 
-    function updatePriceTimerDisplay(){
-      if (!priceTimerEls.length) return;
-      if (!priceTimerDeadline){
-        priceTimerDeadline = Date.now() + PRICE_TIMER_DURATION;
-      }
-      const now = Date.now();
-      let remaining = priceTimerDeadline - now;
-      if (remaining <= 0){
-        priceTimerDeadline = now + PRICE_TIMER_DURATION;
-        remaining = priceTimerDeadline - now;
-      }
-      const totalSeconds = Math.max(0, Math.floor(remaining / 1000));
-      const minutes = Math.floor(totalSeconds / 60);
-      const seconds = totalSeconds % 60;
-      const countdown = minutes.toString().padStart(2, '0') + ':' + seconds.toString().padStart(2, '0');
-      const current = new Date();
-      const dateStr = formatPLDateOnly(current);
-      const timeStr = formatPLTimeOnly(current);
-      const text = 'Aktualne przez ' + countdown + ' • ' + dateStr + ', ' + timeStr;
-      priceTimerEls.forEach((el)=>{ el.textContent = text; });
-    }
-
-    function restartPriceTimer(){
-      if (!priceTimerEls.length) return;
-      priceTimerDeadline = Date.now() + PRICE_TIMER_DURATION;
-      updatePriceTimerDisplay();
-      if (!priceTimerInterval){
-        priceTimerInterval = window.setInterval(updatePriceTimerDisplay, 1000);
-      }
-    }
-
-    function stopPriceTimer(){
-      if (priceTimerInterval){
-        window.clearInterval(priceTimerInterval);
-        priceTimerInterval = null;
-      }
-    }
-
     function updateSummaryMeta(calc){
       if (sumShapeEl)    sumShapeEl.textContent = 'Kształt: ' + shapeLabel(shape);
       if (sumMaterialEl) sumMaterialEl.textContent = 'Materiał: ' + (materialEl?.value || 'Folia ekonomiczna');
@@ -2622,23 +2611,12 @@
 
       const qty = getCurrentQty();
       const c = calc || computeTotalForQty(qty);
-      const days = leadTimeBusinessDays(c.total_area || 0);
-      const target = addBusinessDays(new Date(), days);
       const expressEnabled = !!(expressEl && expressEl.checked);
-      let leadText = 'Wysyłka do ' + formatPLDateOnly(target);
-      if (expressEnabled){
-        leadText += ' • przyspieszona realizacja';
-      }
       if (sumLeadtimeEl){
-        sumLeadtimeEl.textContent = leadText;
+        sumLeadtimeEl.textContent = '';
         if (expressEnabled){ sumLeadtimeEl.dataset.express = '1'; }
         else { delete sumLeadtimeEl.dataset.express; }
       }
-      totalLeadOutEls.forEach((el)=>{
-        el.textContent = leadText;
-        if (expressEnabled){ el.dataset.express = '1'; }
-        else { delete el.dataset.express; }
-      });
     }
 
     // popup do wyceny
@@ -2744,7 +2722,6 @@
       }
 
       updateSummaryMeta(calc);
-      restartPriceTimer();
 
       // Popup jeśli >= 100 m2
       if (calc.total_area >= 100){
