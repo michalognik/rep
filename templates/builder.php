@@ -201,6 +201,7 @@ $stb_zero_net_markup = sprintf(
                         <span class="step-extra-label"><?php esc_html_e( 'Parametry dodatkowe', 'sticker-builder' ); ?></span>
                     </button>
                     <div class="step-extra-body" id="stb-extra-body" hidden>
+                        <p class="step-extra-title"><?php esc_html_e( 'Parametry dodatkowe', 'sticker-builder' ); ?></p>
                         <div class="step-extra-select">
                             <label class="stb-field">
                                 <span class="stb-lbl"><?php esc_html_e( 'Typ folii', 'sticker-builder' ); ?></span>
