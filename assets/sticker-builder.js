@@ -285,6 +285,7 @@
 
     const totalOutEls     = $$('[data-stb-total]');
     const totalNetOutEls  = $$('[data-stb-total-net]');
+    const totalVatOutEls  = $$('[data-stb-total-vat]');
     const totalUnitOutEls = $$('[data-stb-total-unit]');
     const totalSaveOutEls = $$('[data-stb-total-save]');
     const addBtn      = byId('stb-add');
@@ -2844,10 +2845,27 @@
       if (calc.total_area >= 100){
         totalOutEls.forEach((el)=> clearWooPrice(el, 'WYCENA INDYWIDUALNA'));
         totalNetOutEls.forEach((el)=> clearWooPrice(el, ''));
+        totalVatOutEls.forEach((el)=> clearWooPrice(el, ''));
         totalUnitOutEls.forEach((el)=> clearWooPrice(el, ''));
       } else {
         totalOutEls.forEach((el)=> renderWooPrice(el, calc.total));
-        totalNetOutEls.forEach((el)=> renderWooPrice(el, calc.net, { prefix: 'Netto:' }));
+        totalNetOutEls.forEach((el)=>{
+          if (!el) return;
+          if (el.dataset && el.dataset.stbNetPlain === '1'){
+            renderWooPrice(el, calc.net);
+            return;
+          }
+          const prefix = (el.dataset && el.dataset.stbNetPrefix) ? String(el.dataset.stbNetPrefix) : 'Netto:';
+          const opts = prefix ? { prefix } : {};
+          renderWooPrice(el, calc.net, opts);
+        });
+        const vatAmount = Math.max(0, calc.total - calc.net);
+        totalVatOutEls.forEach((el)=>{
+          if (!el) return;
+          const label = (el.dataset && el.dataset.stbVatLabel) ? String(el.dataset.stbVatLabel) : 'VAT (23%):';
+          const opts = label ? { prefix: label } : {};
+          renderWooPrice(el, vatAmount, opts);
+        });
         if (safeQty > 0){
           const unitNet = calc.net / safeQty;
           totalUnitOutEls.forEach((el)=> renderWooPrice(el, unitNet));

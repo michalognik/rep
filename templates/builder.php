@@ -198,6 +198,24 @@ $stb_zero_net_markup = sprintf(
                 </div>
                 <div class="step-extra" id="stb-extra">
                     <button type="button" class="step-extra-toggle" id="stb-extra-toggle" aria-expanded="false" aria-controls="stb-extra-body">
+                        <span class="step-extra-icon step-extra-icon--arrow" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                <path d="M8 5l8 7-8 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                            </svg>
+                        </span>
+                        <span class="step-extra-icon step-extra-icon--gear" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+                                <path d="M19.4 12c0-.4 0-.8-.1-1.2l1.8-1.4-1.8-3.1-2.2.9a6.8 6.8 0 0 0-1.8-1L15.9 4h-3.8l-.4 2.2a6.8 6.8 0 0 0-1.8 1l-2.2-.9-1.8 3.1 1.8 1.4c-.1.4-.1.8-.1 1.2s0 .8.1 1.2l-1.8 1.4 1.8 3.1 2.2-.9c.5.4 1.1.8 1.8 1l.4 2.2h3.8l.4-2.2c.7-.2 1.3-.6 1.8-1l2.2.9 1.8-3.1-1.8-1.4c.1-.4.1-.8.1-1.2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+                            </svg>
+                        </span>
+                        <span class="step-extra-icon step-extra-icon--help" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"></circle>
+                                <path d="M10.2 9a1.8 1.8 0 0 1 3.6 0c0 1.4-2.1 1.8-2.1 3.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+                                <circle cx="12" cy="16.5" r="1" fill="currentColor"></circle>
+                            </svg>
+                        </span>
                         <span class="step-extra-label"><?php esc_html_e( 'Parametry dodatkowe', 'sticker-builder' ); ?></span>
                     </button>
                     <div class="step-extra-body" id="stb-extra-body" hidden>
@@ -673,12 +691,27 @@ $stb_zero_net_markup = sprintf(
         <button type="button" class="btn stb-modal__close" id="stb-close-modal">✕</button>
         <div class="stb-modal__main" id="stb-modal-main"></div>
         <div class="stb-modal__summary">
-            <div class="price-box" data-stb-price-box>
-                <div class="total-val" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
-                <div class="total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
-                <div class="total-unit">
-                    <span class="total-unit-value" data-stb-total-unit><?php echo wp_kses_post( $stb_zero_price_markup ); ?></span>
-                    <span class="total-unit-label"><?php esc_html_e( 'cena/szt.', 'sticker-builder' ); ?></span>
+            <div class="price-box price-box--modal" data-stb-price-box>
+                <div class="total-gross">
+                    <span class="total-gross-label"><?php esc_html_e( 'Cena brutto', 'sticker-builder' ); ?></span>
+                    <div class="total-val" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
+                </div>
+                <div class="price-breakdown">
+                    <div class="price-breakdown-row">
+                        <span class="price-breakdown-label"><?php esc_html_e( 'Cena netto', 'sticker-builder' ); ?></span>
+                        <span class="price-breakdown-value" data-stb-total-net data-stb-net-plain="1"><?php echo wp_kses_post( $stb_zero_price_markup ); ?></span>
+                    </div>
+                    <div class="price-breakdown-row">
+                        <span class="price-breakdown-label"><?php esc_html_e( 'VAT (23%)', 'sticker-builder' ); ?></span>
+                        <span class="price-breakdown-value total-vat" data-stb-total-vat data-stb-vat-label="<?php esc_attr_e( 'VAT (23%):', 'sticker-builder' ); ?>"><?php echo wp_kses_post( $stb_zero_price_markup ); ?></span>
+                    </div>
+                    <div class="price-breakdown-row price-breakdown-row--unit">
+                        <span class="price-breakdown-label"><?php esc_html_e( 'Cena netto / sztuka', 'sticker-builder' ); ?></span>
+                        <span class="price-breakdown-value">
+                            <span class="total-unit-value" data-stb-total-unit><?php echo wp_kses_post( $stb_zero_price_markup ); ?></span>
+                            <span class="total-unit-label"><?php esc_html_e( 'cena/szt.', 'sticker-builder' ); ?></span>
+                        </span>
+                    </div>
                 </div>
                 <div class="total-save" data-stb-total-save aria-live="polite"></div>
             </div>
