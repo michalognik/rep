@@ -437,6 +437,18 @@ final class WC_Sticker_Builder {
         $attachment_id = 0;
         $url           = '';
 
+        $finish_label = '';
+        $finish_slug  = '';
+        if ( isset( $payload['finish_label'] ) && is_string( $payload['finish_label'] ) ) {
+            $finish_label = sanitize_text_field( $payload['finish_label'] );
+        }
+        if ( isset( $payload['finish'] ) ) {
+            $finish_slug = sanitize_key( $payload['finish'] );
+            if ( '' === $finish_label ) {
+                $finish_label = ( 'mat' === $finish_slug ) ? __( 'Mat', 'stb' ) : __( 'Połysk', 'stb' );
+            }
+        }
+
         $express = false;
         if ( isset( $values['stb']['express_production'] ) ) {
             $express = ! empty( $values['stb']['express_production'] );
@@ -481,6 +493,13 @@ final class WC_Sticker_Builder {
 
         if ( $url ) {
             $item->add_meta_data( __( 'Plik klienta', 'stb' ), $url, true );
+        }
+
+        if ( '' !== $finish_label ) {
+            $item->add_meta_data( __( 'Wykończenie', 'stb' ), $finish_label, true );
+            if ( '' !== $finish_slug ) {
+                $item->add_meta_data( '_stb_finish', $finish_slug, true );
+            }
         }
 
         if ( $attachment_id ) {
@@ -752,6 +771,21 @@ final class WC_Sticker_Builder {
                 'key'   => __( 'Materiał', 'stb' ),
                 'value' => sanitize_text_field( $p['material'] ),
             ];
+        }
+        if ( isset( $p['finish_label'] ) || isset( $p['finish'] ) ) {
+            $finish_label = '';
+            if ( isset( $p['finish_label'] ) && is_string( $p['finish_label'] ) ) {
+                $finish_label = sanitize_text_field( $p['finish_label'] );
+            } elseif ( isset( $p['finish'] ) ) {
+                $finish_value = sanitize_key( $p['finish'] );
+                $finish_label = ( 'mat' === $finish_value ) ? __( 'Mat', 'stb' ) : __( 'Połysk', 'stb' );
+            }
+            if ( '' !== $finish_label ) {
+                $item_data[] = [
+                    'key'   => __( 'Wykończenie', 'stb' ),
+                    'value' => $finish_label,
+                ];
+            }
         }
         if ( isset( $p['laminate'] ) ) {
             $item_data[] = [

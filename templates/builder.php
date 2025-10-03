@@ -221,6 +221,15 @@ $stb_zero_net_markup = sprintf(
                                 </select>
                             </label>
                         </div>
+                        <div class="step-extra-select">
+                            <label class="stb-field">
+                                <span class="stb-lbl"><?php esc_html_e( 'Wykończenie', 'sticker-builder' ); ?></span>
+                                <select id="stb-extra-finish" aria-label="<?php esc_attr_e( 'Wykończenie', 'sticker-builder' ); ?>">
+                                    <option value="gloss"><?php esc_html_e( 'Połysk', 'sticker-builder' ); ?></option>
+                                    <option value="mat"><?php esc_html_e( 'Mat', 'sticker-builder' ); ?></option>
+                                </select>
+                            </label>
+                        </div>
                         <div class="step-extra-options">
                             <label class="stb-inline step-extra-option" for="stb-extra-laminate">
                                 <input type="checkbox" id="stb-extra-laminate">
@@ -254,6 +263,10 @@ $stb_zero_net_markup = sprintf(
                                 <div class="config-box-row">
                                     <dt><?php esc_html_e( 'Typ folii', 'sticker-builder' ); ?></dt>
                                     <dd id="sum-material">&mdash;</dd>
+                                </div>
+                                <div class="config-box-row">
+                                    <dt><?php esc_html_e( 'Wykończenie', 'sticker-builder' ); ?></dt>
+                                    <dd id="sum-finish">&mdash;</dd>
                                 </div>
                                 <div class="config-box-row">
                                     <dt><?php esc_html_e( 'Laminat', 'sticker-builder' ); ?></dt>
@@ -428,6 +441,13 @@ $stb_zero_net_markup = sprintf(
                                         <div class="stb-material-grid" id="stb-material-grid" role="listbox" aria-labelledby="stb-material-grid-label"></div>
                                     </div>
                                 </div>
+                                <label class="stb-field" style="min-width:160px;">
+                                    <span class="stb-lbl"><?php esc_html_e( 'Wykończenie', 'sticker-builder' ); ?></span>
+                                    <select id="stb-finish">
+                                        <option value="gloss"><?php esc_html_e( 'Połysk', 'sticker-builder' ); ?></option>
+                                        <option value="mat"><?php esc_html_e( 'Mat', 'sticker-builder' ); ?></option>
+                                    </select>
+                                </label>
                                 <label class="stb-inline" style="margin-top:6px; gap:6px;">
                                     <input type="checkbox" id="stb-laminate">
                                     <span>Laminat ochronny</span>

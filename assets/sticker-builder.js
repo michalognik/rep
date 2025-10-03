@@ -258,6 +258,7 @@
     const materialEl = byId('stb-material');
     const materialGridEl = byId('stb-material-grid');
     const laminateEl = byId('stb-laminate');
+    const finishEl = byId('stb-finish');
     const extraToggle = byId('stb-extra-toggle');
     const extraBody = byId('stb-extra-body');
     const extraWrap = byId('stb-extra');
@@ -266,6 +267,7 @@
     const extraLaminateEl = byId('stb-extra-laminate');
     const expressEl = byId('stb-extra-express');
     const extraShapeSel = byId('stb-extra-shape');
+    const extraFinishSel = byId('stb-extra-finish');
     const extraSummaryWrap = byId('stb-extra-summary');
 
     // Rozmiary / ilość / cena
@@ -302,10 +304,6 @@
       if (extraWrap){
         if (expanded){ extraWrap.classList.add('is-expanded'); }
         else { extraWrap.classList.remove('is-expanded'); }
-      }
-      if (step1){
-        if (expanded){ step1.classList.add('extra-open'); }
-        else { step1.classList.remove('extra-open'); }
       }
     };
 
@@ -535,6 +533,7 @@
     // Rozszerzone podsumowanie
     const sumShapeEl    = byId('sum-shape');
     const sumMaterialEl = byId('sum-material');
+    const sumFinishEl   = byId('sum-finish');
     const sumLaminateEl = byId('sum-laminate');
     const sumExpressEl  = byId('sum-express');
     const sumLeadtimeEl = byId('sum-leadtime');
@@ -638,6 +637,12 @@
     const defaultLaminateValue = !!(laminateEl && laminateEl.checked);
     const defaultExpressValue = !!(expressEl && expressEl.checked);
     let defaultMaterialValue = materialEl ? (materialEl.value || '') : '';
+    const currentFinishValue = ()=>{
+      if (finishEl && typeof finishEl.value === 'string' && finishEl.value !== ''){ return finishEl.value; }
+      if (extraFinishSel && typeof extraFinishSel.value === 'string' && extraFinishSel.value !== ''){ return extraFinishSel.value; }
+      return 'gloss';
+    };
+    const defaultFinishValue = currentFinishValue();
     let extraPanelUsed = false;
 
     const defaultTextObj = ()=>({
@@ -2359,6 +2364,37 @@
       syncQuickMaterial(materialEl.value);
     }
 
+    const syncExtraFinish = ()=>{
+      if (!extraFinishSel) return;
+      const val = currentFinishValue();
+      if (val){ extraFinishSel.value = val; }
+    };
+
+    if (finishEl){
+      finishEl.addEventListener('change', ()=>{
+        syncExtraFinish();
+        updatePriceAndJSON();
+        refreshQtyPrices();
+        updateSummaryMeta();
+      });
+      syncExtraFinish();
+    }
+
+    if (extraFinishSel){
+      extraFinishSel.addEventListener('change', ()=>{
+        markExtraUsed();
+        if (finishEl && finishEl.value !== extraFinishSel.value){
+          finishEl.value = extraFinishSel.value;
+          finishEl.dispatchEvent(new Event('change', { bubbles:true }));
+          return;
+        }
+        updatePriceAndJSON();
+        refreshQtyPrices();
+        updateSummaryMeta();
+      });
+      if (!finishEl){ syncExtraFinish(); }
+    }
+
     const syncQuickLaminate = ()=>{
       if (!extraLaminateEl) return;
       extraLaminateEl.checked = !!(laminateEl && laminateEl.checked);
@@ -2647,13 +2683,27 @@
       }
     }
 
+    const finishLabel = (value)=>{
+      const val = (typeof value === 'string' && value) ? value : currentFinishValue();
+      const source = finishEl || extraFinishSel;
+      if (source && source.options){
+        const opts = Array.from(source.options);
+        const match = opts.find(opt => opt && opt.value === val);
+        if (match && typeof match.textContent === 'string'){ return match.textContent.trim(); }
+      }
+      if (val === 'mat') return 'Mat';
+      if (val === 'gloss') return 'Połysk';
+      return val || '—';
+    };
+
     function hasExtraSelectionsChanged(){
       const materialCurrent = materialEl ? (materialEl.value || '') : '';
       const materialChanged = materialCurrent !== defaultMaterialValue;
       const laminateChanged = (!!(laminateEl && laminateEl.checked)) !== defaultLaminateValue;
       const expressChanged = (!!(expressEl && expressEl.checked)) !== defaultExpressValue;
       const shapeChanged = shape !== defaultShapeValue;
-      return materialChanged || laminateChanged || expressChanged || shapeChanged;
+      const finishChanged = currentFinishValue() !== defaultFinishValue;
+      return materialChanged || laminateChanged || expressChanged || shapeChanged || finishChanged;
     }
 
     function updateConfigSummary(calc){
@@ -2661,6 +2711,7 @@
       const show = extraPanelUsed || hasExtraSelectionsChanged();
       if (!show){
         extraSummaryWrap.hidden = true;
+        if (sumFinishEl){ sumFinishEl.textContent = '—'; }
         if (sumLeadtimeEl){
           sumLeadtimeEl.textContent = '—';
           delete sumLeadtimeEl.dataset.express;
@@ -2675,6 +2726,7 @@
 
       if (sumShapeEl) sumShapeEl.textContent = shapeLabel(shape);
       if (sumMaterialEl) sumMaterialEl.textContent = materialEl?.value || 'Folia ekonomiczna';
+      if (sumFinishEl) sumFinishEl.textContent = finishLabel();
       if (sumLaminateEl) sumLaminateEl.textContent = (laminateEl && laminateEl.checked) ? 'Tak' : 'Nie';
       if (sumExpressEl) sumExpressEl.textContent = expressEnabled ? 'Przyspieszona (+15%)' : 'Standardowa';
 
@@ -2698,6 +2750,7 @@
     function updateSummaryMeta(calc){
       if (sumShapeEl)    sumShapeEl.textContent = shapeLabel(shape);
       if (sumMaterialEl) sumMaterialEl.textContent = materialEl?.value || 'Folia ekonomiczna';
+      if (sumFinishEl)   sumFinishEl.textContent = finishLabel();
       if (sumLaminateEl) sumLaminateEl.textContent = (laminateEl && laminateEl.checked) ? 'Tak' : 'Nie';
 
       const qty = getCurrentQty();
@@ -2776,7 +2829,10 @@
       const qty = getCurrentQty();
       const calc = computeTotalForQty(qty);
       const expressEnabled = !!calc.express;
-      const leadDays = leadTimeBusinessDays(calc.total_area || 0);
+      let leadDays = leadTimeBusinessDays(calc.total_area || 0);
+      if (expressEnabled){ leadDays = Math.max(0, leadDays - 1); }
+      const finishValue = currentFinishValue();
+      const finishLabelText = finishLabel(finishValue);
       const baseline = computeBaselineA(qty);
       let pctSave = 0;
       if (baseline > 0.0001){
@@ -2843,6 +2899,8 @@
           total_price_pln: +calc.total.toFixed(2),
           total_price_net_pln: +calc.net.toFixed(2),
           material: (materialEl && materialEl.value) ? materialEl.value : 'Folia ekonomiczna',
+          finish: finishValue,
+          finish_label: finishLabelText,
           laminate: !!(laminateEl && laminateEl.checked),
           express_production: expressEnabled,
           express_multiplier: calc.express_multiplier || 1,
