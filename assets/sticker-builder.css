@@ -143,16 +143,16 @@
     border-radius:8px;
     border:1px solid var(--line);
     background:#fff;
-    color:var(--accent);
+    color:#111;
     justify-content:center;
     align-items:center;
+    gap:6px;
     box-shadow:0 12px 28px rgba(15,24,44,.18);
     position:relative;
     z-index:2;
   }
   #stb-root #stb-step-1 .step-extra-toggle:hover{
     background:var(--focus-bg);
-    color:var(--focus-border);
   }
   #stb-root #stb-step-1 .step-extra-toggle:focus-visible{
     padding:0;
@@ -162,39 +162,8 @@
     display:inline-flex;
   }
   #stb-root #stb-step-1 .step-extra-toggle .step-extra-icon svg{
-    width:20px;
-    height:20px;
-  }
-  #stb-root #stb-step-1 .step-extra-toggle .step-extra-icon--arrow{
-    width:34px;
-    height:34px;
-    border-radius:10px;
-    box-shadow:0 10px 22px rgba(15,24,44,.18);
-    background:linear-gradient(145deg, rgba(45,127,249,.18), rgba(45,127,249,.05));
-    margin:0;
-  }
-  #stb-root #stb-step-1 .step-extra-toggle .step-extra-icon--gear,
-  #stb-root #stb-step-1 .step-extra-toggle .step-extra-icon--help{
-    position:absolute;
-    width:22px;
-    height:22px;
-    border-radius:7px;
-    box-shadow:0 6px 18px rgba(15,24,44,.12);
-  }
-  #stb-root #stb-step-1 .step-extra-toggle .step-extra-icon--gear{
-    top:8px;
-    left:8px;
-    background:rgba(45,127,249,.12);
-    border:1px solid rgba(45,127,249,.22);
-  }
-  #stb-root #stb-step-1 .step-extra-toggle .step-extra-icon--help{
-    bottom:8px;
-    right:8px;
-    background:rgba(14,33,74,.08);
-    border:1px solid rgba(14,33,74,.18);
-  }
-  #stb-root #stb-step-1 .step-extra.is-expanded .step-extra-icon--arrow svg{
-    transform:rotate(180deg);
+    width:18px;
+    height:18px;
   }
   #stb-root #stb-step-1 .step-extra-toggle .step-extra-label{
     position:absolute;
@@ -285,12 +254,12 @@
   width:100%;
   display:flex;
   align-items:center;
-  justify-content:space-between;
-  gap:12px;
+  justify-content:flex-start;
+  gap:10px;
   padding:4px 0;
   border:none;
   background:none;
-  color:var(--muted);
+  color:var(--ink);
   font-size:.82rem;
   font-weight:700;
   letter-spacing:.04em;
@@ -306,22 +275,21 @@
   padding:4px 8px;
 }
 #stb-root .step-extra-toggle .step-extra-icon{
-  display:none;
+  display:inline-flex;
   align-items:center;
   justify-content:center;
   color:inherit;
+  width:20px;
+  height:20px;
 }
+#stb-root .step-extra-toggle .step-extra-icon + .step-extra-icon{ margin-left:2px; }
 #stb-root .step-extra-toggle .step-extra-icon svg{
-  width:16px;
-  height:16px;
+  width:100%;
+  height:100%;
   transition:transform .25s ease;
 }
-#stb-root .step-extra-toggle .step-extra-icon--arrow{
-  display:inline-flex;
-  margin-left:auto;
-}
 #stb-root .step-extra-toggle[aria-expanded="true"] .step-extra-icon--arrow svg{
-  transform:rotate(90deg);
+  transform:rotate(180deg);
 }
 #stb-root .step-extra-body{ margin-top:16px; display:grid; gap:16px; }
 #stb-root .step-extra-body[hidden]{ display:none; }
@@ -550,6 +518,14 @@
   padding:0;
   margin-top:-2px;
 }
+#stb-root .total-vat{
+  font-size:.86rem;
+  font-weight:600;
+  color:var(--muted);
+  text-align:right;
+  letter-spacing:.01em;
+  white-space:nowrap;
+}
 #stb-root .total-unit{
   display:flex;
   gap:4px;
@@ -683,7 +659,8 @@
 #stb-root .total-unit-label{
   font-weight:600;
 }
-#stb-root .total-net .stb-price-prefix{ font-weight:600; color:inherit; }
+#stb-root .total-net .stb-price-prefix,
+#stb-root .total-vat .stb-price-prefix{ font-weight:600; color:inherit; }
 #stb-root .total-save{
   font-size:.82rem;
   color:var(--accent);
@@ -850,12 +827,12 @@
   border-top:1px solid var(--line);
   background:linear-gradient(135deg, rgba(237,242,255,.85), rgba(255,255,255,.96));
 }
-.stb-modal__summary .price-box{ justify-items:stretch; width:100%; max-width:420px; gap:18px; }
-.stb-modal__summary .price-box .total-gross{ justify-items:center; text-align:center; }
-.stb-modal__summary .price-box .price-breakdown{ gap:12px; }
-.stb-modal__summary .price-box .price-breakdown-row{ font-size:.86rem; }
-.stb-modal__summary .price-box .price-breakdown-value{ justify-content:flex-end; }
-.stb-modal__summary .price-box .total-save{ justify-self:end; font-size:.78rem; color:var(--muted); }
+.stb-modal__summary .price-box{
+  justify-items:end;
+  width:100%;
+  max-width:420px;
+  gap:8px;
+}
 .stb-modal__close{ position:absolute; top:12px; right:12px; z-index:2; border-color:var(--line) !important }
 body.stb-lock{ overflow:hidden }
 
