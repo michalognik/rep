@@ -259,9 +259,6 @@
     const materialGridEl = byId('stb-material-grid');
     const laminateEl = byId('stb-laminate');
     const finishEl = byId('stb-finish');
-    const extraToggle = byId('stb-extra-toggle');
-    const extraBody = byId('stb-extra-body');
-    const extraWrap = byId('stb-extra');
     const extraMaterialSel = byId('stb-extra-material');
     const extraMaterialGridEl = byId('stb-extra-material-grid');
     const extraLaminateEl = byId('stb-extra-laminate');
@@ -292,33 +289,16 @@
 
     const step1       = byId('stb-step-1');
     const step2       = byId('stb-step-2');
+    const step3       = byId('stb-step-3');
     const step1Next   = byId('stb-step1-next');
     const step2Back   = byId('stb-step2-back');
+    const step2Next   = byId('stb-step2-next');
+    const step3Back   = byId('stb-step3-back');
     const uploadTrigger = byId('stb-upload-trigger');
     const uploadSummary = byId('stb-upload-summary');
 
-    const uploadLockEls = [imgEl, upBtn, delBtn, addBtn, step1Next, step2Back].filter(Boolean);
+    const uploadLockEls = [imgEl, upBtn, delBtn, addBtn, step3Back].filter(Boolean);
     let activeUploadXhr = null;
-
-    const syncExtraPanelState = () => {
-      const expanded = !!(extraToggle && extraToggle.getAttribute('aria-expanded') === 'true');
-      if (extraWrap){
-        if (expanded){ extraWrap.classList.add('is-expanded'); }
-        else { extraWrap.classList.remove('is-expanded'); }
-      }
-    };
-
-    if (extraToggle && extraBody){
-      extraToggle.addEventListener('click', ()=>{
-        const expanded = extraToggle.getAttribute('aria-expanded') === 'true';
-        const next = !expanded;
-        extraToggle.setAttribute('aria-expanded', next ? 'true' : 'false');
-        extraBody.hidden = !next;
-        syncExtraPanelState();
-      });
-    }
-
-    syncExtraPanelState();
 
     function setUploadBusy(busy){
       uploadLockEls.forEach(el => {
@@ -542,16 +522,13 @@
     const EXPRESS_MULTIPLIER = 1.15;
 
     /* ===== Kroki ===== */
-    const steps = [step1, step2];
-    let currentStep = step1 ? 1 : 0;
+    const steps = [step1, step2, step3].filter(Boolean);
+    let currentStep = steps.length ? 1 : 0;
 
     function showStep(stepNumber){
       if (!steps.length) return;
-      let targetStep = stepNumber;
-      if (!steps[stepNumber - 1]){
-        const fallbackIndex = steps.findIndex(Boolean);
-        targetStep = fallbackIndex >= 0 ? (fallbackIndex + 1) : stepNumber;
-      }
+      const max = steps.length;
+      const targetStep = Math.min(Math.max(stepNumber, 1), max);
       currentStep = targetStep;
       steps.forEach((step, idx) => {
         if (!step) return;
@@ -585,6 +562,27 @@
           step1.scrollIntoView({ behavior:'smooth', block:'start' });
         }
         window.requestAnimationFrame(()=> focusFirstInteractive(step1));
+      });
+    }
+
+    if (step2Next && step3){
+      step2Next.addEventListener('click', ()=>{
+        updatePriceAndJSON();
+        showStep(3);
+        if (typeof step3.scrollIntoView === 'function'){
+          step3.scrollIntoView({ behavior:'smooth', block:'start' });
+        }
+        window.requestAnimationFrame(()=> focusFirstInteractive(step3));
+      });
+    }
+
+    if (step3Back && step2){
+      step3Back.addEventListener('click', ()=>{
+        showStep(2);
+        if (typeof step2.scrollIntoView === 'function'){
+          step2.scrollIntoView({ behavior:'smooth', block:'start' });
+        }
+        window.requestAnimationFrame(()=> focusFirstInteractive(step2));
       });
     }
 
