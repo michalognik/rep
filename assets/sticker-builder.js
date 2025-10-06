@@ -654,7 +654,6 @@
       return val || '—';
     };
     const defaultFinishValue = currentFinishValue();
-    let extraPanelUsed = false;
 
     const defaultTextObj = ()=>({
       text:'',
@@ -2694,29 +2693,8 @@
       }
     }
 
-    function hasExtraSelectionsChanged(){
-      const materialCurrent = materialEl ? (materialEl.value || '') : '';
-      const materialChanged = materialCurrent !== defaultMaterialValue;
-      const laminateChanged = (!!(laminateEl && laminateEl.checked)) !== defaultLaminateValue;
-      const expressChanged = (!!(expressEl && expressEl.checked)) !== defaultExpressValue;
-      const shapeChanged = shape !== defaultShapeValue;
-      const finishChanged = currentFinishValue() !== defaultFinishValue;
-      return materialChanged || laminateChanged || expressChanged || shapeChanged || finishChanged;
-    }
-
     function updateConfigSummary(calc){
       if (!extraSummaryWrap) return;
-      const show = extraPanelUsed || hasExtraSelectionsChanged();
-      if (!show){
-        extraSummaryWrap.hidden = true;
-        if (sumFinishEl){ sumFinishEl.textContent = '—'; }
-        if (sumLeadtimeEl){
-          sumLeadtimeEl.textContent = '—';
-          delete sumLeadtimeEl.dataset.express;
-        }
-        return;
-      }
-
       extraSummaryWrap.hidden = false;
       const qty = getCurrentQty();
       const summaryCalc = calc || computeTotalForQty(qty);
@@ -2741,7 +2719,6 @@
     }
 
     const markExtraUsed = ()=>{
-      if (!extraPanelUsed){ extraPanelUsed = true; }
       updateConfigSummary();
     };
 
