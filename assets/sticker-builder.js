@@ -149,6 +149,11 @@
     } else {
       allowedMimeSet.add('image/pjpeg');
     }
+    if (allowedMimeSet.has('application/pdf')){
+      allowedMimeSet.add('application/octet-stream');
+      allowedMimeSet.add('binary/octet-stream');
+      allowedMimeSet.add('application/x-pdf');
+    }
     if (!allowedExtSet.size){
       ['jpg','jpeg','jpe','png','pdf'].forEach(ext => allowedExtSet.add(ext));
     }
@@ -1931,9 +1936,12 @@
 
       const hitsDisallowed = (()=>{
         if (ext && disallowedExtSet.has(ext)) return true;
+        const mimeTokens = typeLower
+          ? typeLower.split(/[^a-z0-9]+/).filter(Boolean)
+          : [];
         for (const bad of disallowedExtSet){
           if (!bad) continue;
-          if (typeLower && typeLower.includes(bad)) return true;
+          if (mimeTokens.includes(bad)) return true;
           if (lowerName.endsWith('.' + bad)) return true;
         }
         return false;
