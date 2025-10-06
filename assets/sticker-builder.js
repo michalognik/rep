@@ -133,6 +133,34 @@
     }
     const FIELD = 'stb_payload';
     const CART_URL = (window.STB_CART_URL || '');
+    const uploadConfig = window.STB_UPLOAD || {};
+    const parsedUploadLimit = Number(uploadConfig.max_upload_bytes);
+    const MAX_UPLOAD_BYTES = (Number.isFinite(parsedUploadLimit) && parsedUploadLimit > 0) ? parsedUploadLimit : (25 * 1024 * 1024);
+    const allowedMimeList = Array.isArray(uploadConfig.allowed_mimes) ? uploadConfig.allowed_mimes : [];
+    const allowedExtList = Array.isArray(uploadConfig.allowed_exts) ? uploadConfig.allowed_exts : [];
+    const disallowedExtList = Array.isArray(uploadConfig.disallowed_exts) ? uploadConfig.disallowed_exts : [];
+    const allowedMimeSet = new Set(allowedMimeList.map(val => String(val || '').toLowerCase()).filter(Boolean));
+    const allowedExtSet = new Set(allowedExtList.map(val => String(val || '').toLowerCase()).filter(Boolean));
+    if (!allowedMimeSet.size){
+      allowedMimeSet.add('image/jpeg');
+      allowedMimeSet.add('image/png');
+      allowedMimeSet.add('application/pdf');
+      allowedMimeSet.add('image/pjpeg');
+    } else {
+      allowedMimeSet.add('image/pjpeg');
+    }
+    if (allowedMimeSet.has('application/pdf')){
+      allowedMimeSet.add('application/octet-stream');
+      allowedMimeSet.add('binary/octet-stream');
+      allowedMimeSet.add('application/x-pdf');
+    }
+    if (!allowedExtSet.size){
+      ['jpg','jpeg','jpe','png','pdf'].forEach(ext => allowedExtSet.add(ext));
+    }
+    const disallowedExtSet = new Set(disallowedExtList.map(val => String(val || '').toLowerCase()).filter(Boolean));
+    if (!disallowedExtSet.size){
+      ['svg','svgz','zip','rar','7z','php','phtml','phar','js','cgi','pl','asp','aspx'].forEach(ext => disallowedExtSet.add(ext));
+    }
 
     const PDFLib = window.PDFLib || null;         // eksport PDF
     const QRCodeLib = window.QRCode || null;      // davidshimjs
@@ -235,6 +263,14 @@
     const materialEl = byId('stb-material');
     const materialGridEl = byId('stb-material-grid');
     const laminateEl = byId('stb-laminate');
+    const finishEl = byId('stb-finish');
+    const extraMaterialSel = byId('stb-extra-material');
+    const extraMaterialGridEl = byId('stb-extra-material-grid');
+    const extraLaminateEl = byId('stb-extra-laminate');
+    const expressEl = byId('stb-extra-express');
+    const extraShapeSel = byId('stb-extra-shape');
+    const extraFinishSel = byId('stb-extra-finish');
+    const extraSummaryWrap = byId('stb-extra-summary');
 
     // Rozmiary / ilość / cena
     const sizeList = byId('sizeList');
@@ -251,17 +287,152 @@
 
     const totalOutEls     = $$('[data-stb-total]');
     const totalNetOutEls  = $$('[data-stb-total-net]');
+    const totalVatOutEls  = $$('[data-stb-total-vat]');
+    const totalUnitOutEls = $$('[data-stb-total-unit]');
     const totalSaveOutEls = $$('[data-stb-total-save]');
-    const totalLeadOutEls = $$('[data-stb-total-lead]');
-    const priceTimerEls   = $$('[data-stb-price-timer]');
     const addBtn      = byId('stb-add');
 
     const step1       = byId('stb-step-1');
     const step2       = byId('stb-step-2');
+    const step3       = byId('stb-step-3');
     const step1Next   = byId('stb-step1-next');
     const step2Back   = byId('stb-step2-back');
+    const step2Next   = byId('stb-step2-next');
+    const step3Back   = byId('stb-step3-back');
     const uploadTrigger = byId('stb-upload-trigger');
     const uploadSummary = byId('stb-upload-summary');
+
+    const uploadLockEls = [imgEl, upBtn, delBtn, addBtn, step3Back].filter(Boolean);
+    let activeUploadXhr = null;
+
+    function setUploadBusy(busy){
+      uploadLockEls.forEach(el => {
+        if (!el) return;
+        if ('disabled' in el){
+          if (busy){
+            el.dataset.stbWasDisabled = el.disabled ? '1' : '0';
+            el.disabled = true;
+          } else {
+            if (el.dataset.stbWasDisabled === '1'){
+              el.disabled = true;
+            } else {
+              el.disabled = false;
+            }
+            delete el.dataset.stbWasDisabled;
+          }
+        }
+        if (el.classList){
+          if (busy){ el.classList.add('is-loading'); } else { el.classList.remove('is-loading'); }
+        }
+      });
+      if (uploadTrigger){
+        if (busy){
+          uploadTrigger.classList.add('is-disabled');
+          uploadTrigger.setAttribute('aria-disabled', 'true');
+        } else {
+          uploadTrigger.classList.remove('is-disabled');
+          uploadTrigger.removeAttribute('aria-disabled');
+        }
+      }
+    }
+
+    function abortActiveUpload(options={}){
+      if (activeUploadXhr){
+        if (options.silent){ activeUploadXhr.__stbSilentAbort = true; }
+        try { activeUploadXhr.abort(); } catch(err){}
+      }
+    }
+
+    function uploadMessage(msg){
+      if (!uploadSummary) return;
+      if (typeof msg === 'string'){ uploadSummary.textContent = msg; }
+    }
+
+    function uploadFileToServer(file){
+      if (!uploadConfig || !uploadConfig.ajax_url){
+        uploadMessage('Brak konfiguracji przesyłania plików.');
+        return Promise.resolve(null);
+      }
+
+      abortActiveUpload({ silent:true });
+
+      return new Promise((resolve)=>{
+        const xhr = new XMLHttpRequest();
+        activeUploadXhr = xhr;
+        xhr.open('POST', String(uploadConfig.ajax_url), true);
+        xhr.responseType = 'json';
+        xhr.timeout = 5 * 60 * 1000; // 5 minut
+
+        const finalize = (result) => {
+          if (activeUploadXhr === xhr){ activeUploadXhr = null; }
+          setUploadBusy(false);
+          resolve(result);
+        };
+
+        xhr.upload.onprogress = (ev)=>{
+          if (!uploadSummary) return;
+          if (ev && ev.lengthComputable){
+            const pct = Math.round((ev.loaded / Math.max(1, ev.total)) * 100);
+            uploadSummary.textContent = `Wysyłanie pliku… ${pct}%`;
+          } else {
+            uploadSummary.textContent = 'Wysyłanie pliku…';
+          }
+        };
+
+        const handleError = (message, silent=false)=>{
+          if (!silent){
+            uploadMessage(message || 'Nie udało się przesłać pliku.');
+          }
+          finalize(null);
+        };
+
+        xhr.onload = ()=>{
+          let response = xhr.response;
+          if (!response && xhr.responseText){
+            try { response = JSON.parse(xhr.responseText); } catch(err){}
+          }
+
+          if (xhr.status >= 200 && xhr.status < 300 && response && response.success && response.data){
+            const data = response.data || {};
+            finalize({
+              uploadId: Number.isFinite(Number(data.id)) ? Number(data.id) : 0,
+              url: typeof data.url === 'string' ? data.url : '',
+              size: Number.isFinite(Number(data.size)) ? Number(data.size) : (file?.size || 0),
+              type: typeof data.type === 'string' ? data.type : (file?.type || ''),
+              name: typeof data.name === 'string' ? data.name : (file?.name || ''),
+            });
+            return;
+          }
+
+          const silent = !!xhr.__stbSilentAbort;
+          const message = response?.data?.message || response?.message || (xhr.status === 413 ? 'Plik jest zbyt duży.' : null);
+          handleError(message || 'Nie udało się przesłać pliku.', silent);
+        };
+
+        xhr.onerror = ()=>{
+          const silent = !!xhr.__stbSilentAbort;
+          handleError('Błąd połączenia podczas przesyłania pliku.', silent);
+        };
+
+        xhr.onabort = ()=>{
+          const silent = !!xhr.__stbSilentAbort;
+          handleError(silent ? '' : 'Przesyłanie pliku przerwane.', silent);
+        };
+
+        xhr.ontimeout = ()=>{
+          handleError('Limit czasu przesyłania pliku został przekroczony.');
+        };
+
+        const formData = new FormData();
+        formData.append('action', 'stb_upload_file');
+        if (uploadConfig.nonce){ formData.append('nonce', uploadConfig.nonce); }
+        formData.append('stb_file', file, file?.name || 'upload');
+
+        setUploadBusy(true);
+        uploadMessage('Rozpoczynam przesyłanie pliku…');
+        xhr.send(formData);
+      });
+    }
 
     const hasSvgElement = typeof SVGElement !== 'undefined';
 
@@ -348,24 +519,21 @@
     // Rozszerzone podsumowanie
     const sumShapeEl    = byId('sum-shape');
     const sumMaterialEl = byId('sum-material');
+    const sumFinishEl   = byId('sum-finish');
     const sumLaminateEl = byId('sum-laminate');
+    const sumExpressEl  = byId('sum-express');
     const sumLeadtimeEl = byId('sum-leadtime');
 
-    const PRICE_TIMER_DURATION = 15 * 60 * 1000; // 15 minut
-    let priceTimerDeadline = null;
-    let priceTimerInterval = null;
+    const EXPRESS_MULTIPLIER = 1.15;
 
     /* ===== Kroki ===== */
-    const steps = [step1, step2];
-    let currentStep = step1 ? 1 : 0;
+    const steps = [step1, step2, step3].filter(Boolean);
+    let currentStep = steps.length ? 1 : 0;
 
     function showStep(stepNumber){
       if (!steps.length) return;
-      let targetStep = stepNumber;
-      if (!steps[stepNumber - 1]){
-        const fallbackIndex = steps.findIndex(Boolean);
-        targetStep = fallbackIndex >= 0 ? (fallbackIndex + 1) : stepNumber;
-      }
+      const max = steps.length;
+      const targetStep = Math.min(Math.max(stepNumber, 1), max);
       currentStep = targetStep;
       steps.forEach((step, idx) => {
         if (!step) return;
@@ -402,6 +570,27 @@
       });
     }
 
+    if (step2Next && step3){
+      step2Next.addEventListener('click', ()=>{
+        updatePriceAndJSON();
+        showStep(3);
+        if (typeof step3.scrollIntoView === 'function'){
+          step3.scrollIntoView({ behavior:'smooth', block:'start' });
+        }
+        window.requestAnimationFrame(()=> focusFirstInteractive(step3));
+      });
+    }
+
+    if (step3Back && step2){
+      step3Back.addEventListener('click', ()=>{
+        showStep(2);
+        if (typeof step2.scrollIntoView === 'function'){
+          step2.scrollIntoView({ behavior:'smooth', block:'start' });
+        }
+        window.requestAnimationFrame(()=> focusFirstInteractive(step2));
+      });
+    }
+
     if (uploadTrigger && upBtn){
       uploadTrigger.addEventListener('click', (ev)=>{
         ev.preventDefault();
@@ -410,10 +599,6 @@
     }
 
     showStep(currentStep || 1);
-
-    if (priceTimerEls.length){
-      window.addEventListener('beforeunload', stopPriceTimer, { once:true });
-    }
 
     // Tekst
     const textInput     = byId('stb-text-input');
@@ -445,13 +630,35 @@
 
     /* ===== Stan ===== */
     const parseNum = (elOrVal, def) => { const v=(typeof elOrVal==='number')?elOrVal:parseFloat(elOrVal?.value); return (isFinite(v)&&v>0)?v:def; };
-    let uploaded = { name:null, type:null, size:0, dataURL:null, img:null, pdf:null };
+    let uploaded = { name:null, type:null, size:0, dataURL:null, img:null, pdf:null, uploadId:null, url:null, uploadBytes:0 };
     let transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 }; // GRAFIKA
     let cornerFactor = 0.04; // 4%
     let gridOn = false;
 
     // shapes: rect|circle|ellipse|triangle|octagon|diecut
     let shape='rect', ellipseRatio=1.0;
+    const defaultShapeValue = shape;
+    const defaultLaminateValue = !!(laminateEl && laminateEl.checked);
+    const defaultExpressValue = !!(expressEl && expressEl.checked);
+    let defaultMaterialValue = materialEl ? (materialEl.value || '') : '';
+    const currentFinishValue = ()=>{
+      if (finishEl && typeof finishEl.value === 'string' && finishEl.value !== ''){ return finishEl.value; }
+      if (extraFinishSel && typeof extraFinishSel.value === 'string' && extraFinishSel.value !== ''){ return extraFinishSel.value; }
+      return 'gloss';
+    };
+    const finishLabel = (value)=>{
+      const val = (typeof value === 'string' && value) ? value : currentFinishValue();
+      const source = finishEl || extraFinishSel;
+      if (source && source.options){
+        const opts = Array.from(source.options);
+        const match = opts.find(opt => opt && opt.value === val);
+        if (match && typeof match.textContent === 'string'){ return match.textContent.trim(); }
+      }
+      if (val === 'mat') return 'Mat';
+      if (val === 'gloss') return 'Połysk';
+      return val || '—';
+    };
+    const defaultFinishValue = currentFinishValue();
 
     const defaultTextObj = ()=>({
       text:'',
@@ -825,7 +1032,7 @@
       if (contrast > 1.6) return false;
       return colorDistance(o,bg) < 80;
     };
-    const shapeLabel = (s)=>({ rect:'Prostokąt', circle:'Koło', ellipse:'Elipsa', triangle:'Trójkąt', octagon:'Ośmiokąt', diecut:'DIECUT' }[s] || '—');
+    const shapeLabel = (s)=>({ rect:'Prostokąt', circle:'Koło', ellipse:'Elipsa', triangle:'Trójkąt', octagon:'Ośmiokąt', diecut:'Dowolny kształt (DIECUT)' }[s] || '—');
 
     /* ===== Geometria ===== */
     function polygonPath(c, points, radius){
@@ -1692,15 +1899,24 @@
       if (!fMeta) return;
       fMeta.textContent = prettyMeta(pxW, pxH, mime, sizeBytes, extra);
     }
-    function clearImage(){
-      uploaded={ name:null, type:null, size:0, dataURL:null, img:null, pdf:null };
+    function clearImage(arg){
+      const isEvent = arg && typeof arg === 'object' && typeof arg.preventDefault === 'function';
+      if (isEvent){ try { arg.preventDefault(); } catch(err){} }
+      const options = (!isEvent && arg && typeof arg === 'object') ? arg : {};
+      const keepSummary = !!options.keepSummary;
+
+      abortActiveUpload({ silent:true });
+      setUploadBusy(false);
+
+      uploaded = { name:null, type:null, size:0, dataURL:null, img:null, pdf:null, uploadId:null, url:null, uploadBytes:0 };
       if (imgEl) imgEl.value='';
       if (fName) fName.textContent='brak pliku';
-      if (uploadSummary) uploadSummary.textContent='Brak pliku';
+      if (uploadSummary && !keepSummary) uploadSummary.textContent='Brak pliku';
       if (fMeta) fMeta.textContent='';
       transform={scale:1,offsetX:0,offsetY:0,rotDeg:0};
       if (lastToolTarget === 'image') setToolTarget(null);
       requestDraw();
+      updatePriceAndJSON();
     }
     if (upBtn){
       upBtn.addEventListener('click', ()=> imgEl && imgEl.click());
@@ -1712,8 +1928,41 @@
       const f = e.target.files && e.target.files[0];
       if (!f){ clearImage(); return; }
       const name = f.name || '';
-      if (fName) fName.textContent = name;
-      if (uploadSummary) uploadSummary.textContent = name;
+      if (fName) fName.textContent = name || 'brak pliku';
+
+      const lowerName = (name || '').toLowerCase();
+      const ext = lowerName.includes('.') ? lowerName.split('.').pop() : '';
+      const typeLower = (f.type || '').toLowerCase();
+
+      const hitsDisallowed = (()=>{
+        if (ext && disallowedExtSet.has(ext)) return true;
+        const mimeTokens = typeLower
+          ? typeLower.split(/[^a-z0-9]+/).filter(Boolean)
+          : [];
+        for (const bad of disallowedExtSet){
+          if (!bad) continue;
+          if (mimeTokens.includes(bad)) return true;
+          if (lowerName.endsWith('.' + bad)) return true;
+        }
+        return false;
+      })();
+      if (hitsDisallowed){
+        clearImage({ keepSummary:true });
+        if (uploadSummary){
+          uploadSummary.textContent = 'Ten typ pliku jest zablokowany. Dozwolone formaty: JPG, PNG lub PDF.';
+        }
+        return;
+      }
+
+      const allowedByExt = ext && allowedExtSet.has(ext);
+      const allowedByMime = typeLower && allowedMimeSet.has(typeLower);
+      if (!allowedByExt && !allowedByMime){
+        clearImage({ keepSummary:true });
+        if (uploadSummary){
+          uploadSummary.textContent = 'Nieobsługiwany format pliku. Wgraj JPG, PNG lub PDF.';
+        }
+        return;
+      }
 
       // jeśli diecut — tylko PNG z przezroczystością
       if (shape==='diecut'){
@@ -1725,17 +1974,47 @@
         }
       }
 
-      // PDF preview via PDF.js (first page)
+      const limitBytes = (Number.isFinite(MAX_UPLOAD_BYTES) && MAX_UPLOAD_BYTES > 0) ? MAX_UPLOAD_BYTES : null;
+      if (limitBytes && Number.isFinite(f.size) && f.size > limitBytes){
+        clearImage({ keepSummary:true });
+        if (uploadSummary){
+          const limitLabel = prettyBytes(limitBytes);
+          const sizeLabel = prettyBytes(f.size || 0);
+          uploadSummary.innerHTML = `Plik ma ${sizeLabel} i przekracza limit ${limitLabel}.<br>Większe pliki prześlij proszę przez <a href="https://wetransfer.com/" target="_blank" rel="noopener">WeTransfer</a> i dołącz link w uwagach do zamówienia.`;
+        }
+        return;
+      }
+
       const isPDF = (f.type && f.type.toLowerCase().includes('pdf')) || /\.pdf$/i.test(name);
       if (isPDF){
         if (shape==='diecut'){
           alert('Tryb DIECUT wspiera tylko PNG z przezroczystością.');
-          clearImage(); return;
+          clearImage();
+          return;
         }
         if (!window.pdfjsLib || typeof window.pdfjsLib.getDocument!=='function'){
           alert('Podgląd PDF wymaga PDF.js (brak biblioteki).');
-          clearImage(); return;
+          clearImage();
+          return;
         }
+      }
+
+      const uploadInfo = await uploadFileToServer(f);
+      if (!uploadInfo){
+        clearImage({ keepSummary:true });
+        return;
+      }
+
+      const uploadedSize = uploadInfo.size || f.size || 0;
+      const uploadedType = uploadInfo.type || f.type || '';
+      const uploadedUrl  = uploadInfo.url || '';
+      const uploadedId   = uploadInfo.uploadId || 0;
+
+      if (uploadSummary){
+        uploadSummary.textContent = `${name || 'Plik'} • ${prettyBytes(uploadedSize)}`;
+      }
+
+      if (isPDF){
         try{
           const buf = await f.arrayBuffer();
           const pdfTask = window.pdfjsLib.getDocument({ data: new Uint8Array(buf) });
@@ -1751,11 +2030,22 @@
           const dataURL = c.toDataURL('image/png');
           const img = new Image();
           img.onload = ()=>{
-            uploaded = { name, type:(f.type||'application/pdf'), size:(f.size||0), dataURL, img, pdf:{ numPages: pdf.numPages||1 } };
+            uploaded = {
+              name,
+              type:(uploadedType || 'application/pdf'),
+              size:uploadedSize,
+              dataURL,
+              img,
+              pdf:{ numPages: pdf.numPages||1 },
+              uploadId:uploadedId,
+              url:uploadedUrl,
+              uploadBytes:uploadedSize
+            };
             transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
-            updateFileMeta(c.width, c.height, (f.type||'application/pdf'), (f.size||0), `PDF • ${pdf.numPages||1} str.`);
+            updateFileMeta(c.width, c.height, (uploadedType || 'application/pdf'), uploadedSize, `PDF • ${pdf.numPages||1} str.`);
             setToolTarget('image');
             requestDraw();
+            updatePriceAndJSON();
           };
           img.src = dataURL;
         }catch(err){
@@ -1766,17 +2056,27 @@
         return;
       }
 
-      // Image / SVG / PNG
       const rd = new FileReader();
       rd.onload = (ev)=>{
         const dataURL = String(ev.target.result);
         const img = new Image();
         img.onload = ()=>{
-          uploaded = { name, type:(f.type||''), size:(f.size||0), dataURL, img, pdf:null };
+          uploaded = {
+            name,
+            type:(uploadedType || ''),
+            size:uploadedSize,
+            dataURL,
+            img,
+            pdf:null,
+            uploadId:uploadedId,
+            url:uploadedUrl,
+            uploadBytes:uploadedSize
+          };
           transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
-          updateFileMeta(img.naturalWidth||img.width, img.naturalHeight||img.height, (f.type||''), (f.size||0));
+          updateFileMeta(img.naturalWidth||img.width, img.naturalHeight||img.height, (uploadedType || ''), uploadedSize);
           setToolTarget('image');
           requestDraw();
+          updatePriceAndJSON();
         };
         img.src = dataURL;
       };
@@ -1802,6 +2102,27 @@
     }
 
     function updateShapeUI(){
+      if (shapeGrid){
+        $$('.shape-btn', shapeGrid).forEach(btn => {
+          const val = btn.getAttribute('data-shape') || 'rect';
+          const isActive = val === shape;
+          btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
+      }
+      if (extraShapeSel){
+        const options = Array.from(extraShapeSel.options || []);
+        const hasOption = options.some(opt => opt.value === shape);
+        if (!hasOption && shape){
+          const opt = document.createElement('option');
+          opt.value = shape;
+          opt.textContent = shapeLabel(shape);
+          extraShapeSel.appendChild(opt);
+        }
+        if (extraShapeSel.value !== shape){
+          extraShapeSel.value = shape;
+        }
+      }
+
       const dis = (shape==='ellipse' || shape==='circle' || shape==='diecut');
       if (cornerEl) cornerEl.disabled = dis;
       if (ellipseRow) ellipseRow.style.display = (shape==='ellipse') ? '' : 'none';
@@ -1820,9 +2141,15 @@
     if (shapeGrid){
       shapeGrid.addEventListener('click', (e)=>{
         const btn = e.target.closest('.shape-btn'); if(!btn) return;
-        $$('.shape-btn', shapeGrid).forEach(b=>b.setAttribute('aria-pressed','false'));
-        btn.setAttribute('aria-pressed','true');
         shape = btn.getAttribute('data-shape') || 'rect';
+        updateShapeUI();
+      });
+    }
+    if (extraShapeSel){
+      extraShapeSel.addEventListener('change', ()=>{
+        markExtraUsed();
+        const next = extraShapeSel.value || 'rect';
+        shape = next;
         updateShapeUI();
       });
     }
@@ -1900,21 +2227,52 @@
       }
     }
 
+    if (materialEl && !defaultMaterialValue){
+      defaultMaterialValue = materialEl.value || '';
+    }
+
     const materialTiles = [];
+    const syncQuickMaterial = (value) => {
+      if (!extraMaterialSel) return;
+      const target = value || '';
+      if (extraMaterialSel.value === target) return;
+      let hasOption = false;
+      const options = Array.from(extraMaterialSel.options || []);
+      for (const opt of options){
+        if (opt.value === target){ hasOption = true; break; }
+      }
+      if (!hasOption && target){
+        const optEl = document.createElement('option');
+        optEl.value = target;
+        optEl.textContent = target;
+        extraMaterialSel.appendChild(optEl);
+        hasOption = true;
+      }
+      if (hasOption){
+        extraMaterialSel.value = target;
+      } else if (extraMaterialSel.options.length){
+        extraMaterialSel.value = extraMaterialSel.options[0].value;
+      }
+    };
 
     const updateMaterialTiles = (value) => {
       const target = (value || '').toLowerCase();
-      let activeId = null;
-      materialTiles.forEach(({ option, el }) => {
+      const activeMap = new Map();
+      materialTiles.forEach(({ option, el, grid }) => {
         const isActive = option.value.toLowerCase() === target;
         el.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         el.setAttribute('aria-selected', isActive ? 'true' : 'false');
-        if (isActive) activeId = el.id;
+        if (isActive && grid){
+          activeMap.set(grid, el.id);
+        }
       });
-      if (materialGridEl){
-        if (activeId) materialGridEl.setAttribute('aria-activedescendant', activeId);
-        else materialGridEl.removeAttribute('aria-activedescendant');
-      }
+      [materialGridEl, extraMaterialGridEl].forEach((grid) => {
+        if (!grid) return;
+        const activeId = activeMap.get(grid);
+        if (activeId){ grid.setAttribute('aria-activedescendant', activeId); }
+        else { grid.removeAttribute('aria-activedescendant'); }
+      });
+      syncQuickMaterial(value);
     };
 
     const setMaterialValue = (value, { triggerChange = true } = {}) => {
@@ -1928,49 +2286,85 @@
       }
     };
 
+    const buildMaterialTile = (option, index, gridEl, suffix = '') => {
+      if (!gridEl || !option) return;
+      const tile = document.createElement('button');
+      tile.type = 'button';
+      tile.className = 'material-tile';
+      const baseId = option.id || `stb-material-${index}`;
+      tile.id = suffix ? `${baseId}-${suffix}` : baseId;
+      tile.dataset.value = option.value;
+      tile.setAttribute('role', 'option');
+      tile.setAttribute('aria-pressed', 'false');
+      tile.setAttribute('aria-selected', 'false');
+      tile.setAttribute('aria-label', option.label);
+      tile.dataset.image = option.image || '';
+      if (option.image){
+        tile.style.setProperty('--material-image', `url("${option.image}")`);
+      }
+
+      const image = document.createElement('span');
+      image.className = 'material-tile__image';
+      tile.appendChild(image);
+
+      const caption = document.createElement('span');
+      caption.className = 'material-tile__name';
+      const primaryText = option.shortLabel || option.label;
+      const strongLine = document.createElement('strong');
+      strongLine.textContent = primaryText;
+      caption.appendChild(strongLine);
+      if (option.note){
+        const noteLine = document.createElement('small');
+        noteLine.textContent = option.note;
+        caption.appendChild(noteLine);
+      }
+      tile.title = option.note ? `${option.label} — ${option.note}` : option.label;
+      tile.appendChild(caption);
+
+      tile.addEventListener('click', () => setMaterialValue(option.value));
+
+      materialTiles.push({ option, el: tile, grid: gridEl });
+      gridEl.appendChild(tile);
+    };
+
     if (materialGridEl && materialOptions.length){
       materialGridEl.setAttribute('aria-multiselectable', 'false');
       materialGridEl.innerHTML = '';
       materialOptions.forEach((option, index) => {
         if (!option) return;
-        const tile = document.createElement('button');
-        tile.type = 'button';
-        tile.className = 'material-tile';
-        tile.id = option.id || `stb-material-${index}`;
-        tile.dataset.value = option.value;
-        tile.setAttribute('role', 'option');
-        tile.setAttribute('aria-pressed', 'false');
-        tile.setAttribute('aria-selected', 'false');
-        tile.setAttribute('aria-label', option.label);
-        tile.dataset.image = option.image || '';
-        if (option.image){
-          tile.style.setProperty('--material-image', `url("${option.image}")`);
-        }
-
-        const image = document.createElement('span');
-        image.className = 'material-tile__image';
-        tile.appendChild(image);
-
-        const caption = document.createElement('span');
-        caption.className = 'material-tile__name';
-        const primaryText = option.shortLabel || option.label;
-        const strongLine = document.createElement('strong');
-        strongLine.textContent = primaryText;
-        caption.appendChild(strongLine);
-        if (option.note){
-          const noteLine = document.createElement('small');
-          noteLine.textContent = option.note;
-          caption.appendChild(noteLine);
-        }
-        tile.title = option.note ? `${option.label} — ${option.note}` : option.label;
-        tile.appendChild(caption);
-
-        tile.addEventListener('click', () => setMaterialValue(option.value));
-
-        materialTiles.push({ option, el: tile });
-        materialGridEl.appendChild(tile);
+        buildMaterialTile(option, index, materialGridEl);
       });
       updateMaterialTiles(materialEl ? materialEl.value : '');
+    }
+
+    if (extraMaterialGridEl && materialOptions.length){
+      extraMaterialGridEl.setAttribute('aria-multiselectable', 'false');
+      extraMaterialGridEl.innerHTML = '';
+      materialOptions.forEach((option, index) => {
+        if (!option) return;
+        buildMaterialTile(option, index, extraMaterialGridEl, 'extra');
+      });
+    }
+
+    if (extraMaterialSel && materialOptions.length){
+      extraMaterialSel.innerHTML = '';
+      materialOptions.forEach((option)=>{
+        if (!option) return;
+        const opt = document.createElement('option');
+        opt.value = option.value;
+        opt.textContent = option.label;
+        extraMaterialSel.appendChild(opt);
+      });
+      syncQuickMaterial(materialEl ? materialEl.value : extraMaterialSel.value);
+      extraMaterialSel.addEventListener('change', ()=>{
+        markExtraUsed();
+        setMaterialValue(extraMaterialSel.value);
+      });
+    } else if (extraMaterialSel){
+      extraMaterialSel.addEventListener('change', ()=>{
+        markExtraUsed();
+        setMaterialValue(extraMaterialSel.value);
+      });
     }
 
     function materialMultiplier(){
@@ -1978,13 +2372,88 @@
       if (v.indexOf('długo') !== -1 || v.indexOf('dlugo') !== -1) return 1.5; // folia długowieczna
       return 1.0; // ekonomiczna lub inne
     }
-    if (materialEl) materialEl.addEventListener('change', ()=>{
-      updateMaterialTiles(materialEl.value);
-      updatePriceAndJSON();
-      refreshQtyPrices();
-      updateSummaryMeta();
-    });
-    if (laminateEl) laminateEl.addEventListener('change', ()=>{ updatePriceAndJSON(); refreshQtyPrices(); updateSummaryMeta(); requestDraw(); });
+    if (materialEl){
+      materialEl.addEventListener('change', ()=>{
+        updateMaterialTiles(materialEl.value);
+        updatePriceAndJSON();
+        refreshQtyPrices();
+        updateSummaryMeta();
+      });
+      syncQuickMaterial(materialEl.value);
+    }
+
+    const syncExtraFinish = ()=>{
+      if (!extraFinishSel) return;
+      const val = currentFinishValue();
+      if (val){ extraFinishSel.value = val; }
+    };
+
+    if (finishEl){
+      finishEl.addEventListener('change', ()=>{
+        syncExtraFinish();
+        updatePriceAndJSON();
+        refreshQtyPrices();
+        updateSummaryMeta();
+      });
+      syncExtraFinish();
+    }
+
+    if (extraFinishSel){
+      extraFinishSel.addEventListener('change', ()=>{
+        markExtraUsed();
+        if (finishEl && finishEl.value !== extraFinishSel.value){
+          finishEl.value = extraFinishSel.value;
+          finishEl.dispatchEvent(new Event('change', { bubbles:true }));
+          return;
+        }
+        updatePriceAndJSON();
+        refreshQtyPrices();
+        updateSummaryMeta();
+      });
+      if (!finishEl){ syncExtraFinish(); }
+    }
+
+    const syncQuickLaminate = ()=>{
+      if (!extraLaminateEl) return;
+      extraLaminateEl.checked = !!(laminateEl && laminateEl.checked);
+    };
+
+    if (laminateEl){
+      laminateEl.addEventListener('change', ()=>{
+        syncQuickLaminate();
+        updatePriceAndJSON();
+        refreshQtyPrices();
+        updateSummaryMeta();
+        requestDraw();
+      });
+      syncQuickLaminate();
+    }
+    if (extraLaminateEl){
+      extraLaminateEl.addEventListener('change', ()=>{
+        markExtraUsed();
+        if (laminateEl && laminateEl.checked !== extraLaminateEl.checked){
+          laminateEl.checked = extraLaminateEl.checked;
+          laminateEl.dispatchEvent(new Event('change', { bubbles:true }));
+        } else {
+          updatePriceAndJSON();
+          refreshQtyPrices();
+          updateSummaryMeta();
+          requestDraw();
+        }
+      });
+      if (!laminateEl){
+        syncQuickLaminate();
+      }
+    }
+
+    if (expressEl){
+      expressEl.addEventListener('change', ()=>{
+        markExtraUsed();
+        updatePriceAndJSON();
+        refreshQtyPrices();
+        updateSummaryMeta();
+      });
+    }
 
     /* ===== Tekst ===== */
     const refreshFontPreview = ()=>{
@@ -2165,8 +2634,10 @@
 
       if (total<99) total=99;
       if (laminateEl && laminateEl.checked){ total *= 1.15; } // LAMINAT +15%
+      const expressEnabled = !!(expressEl && expressEl.checked);
+      if (expressEnabled){ total *= EXPRESS_MULTIPLIER; }
       const net=total/1.23;
-      return { total, net, rate, areaOne, total_area, qty };
+      return { total, net, rate, areaOne, total_area, qty, express: expressEnabled, express_multiplier: expressEnabled ? EXPRESS_MULTIPLIER : 1 };
     }
     function computeBaselineA(q){ const areaOne=computeAreaM2(); const qty=Math.max(1, Math.floor(q||1)); return areaOne*200*qty; }
 
@@ -2230,56 +2701,51 @@
       }
     }
 
-    function updatePriceTimerDisplay(){
-      if (!priceTimerEls.length) return;
-      if (!priceTimerDeadline){
-        priceTimerDeadline = Date.now() + PRICE_TIMER_DURATION;
-      }
-      const now = Date.now();
-      let remaining = priceTimerDeadline - now;
-      if (remaining <= 0){
-        priceTimerDeadline = now + PRICE_TIMER_DURATION;
-        remaining = priceTimerDeadline - now;
-      }
-      const totalSeconds = Math.max(0, Math.floor(remaining / 1000));
-      const minutes = Math.floor(totalSeconds / 60);
-      const seconds = totalSeconds % 60;
-      const countdown = minutes.toString().padStart(2, '0') + ':' + seconds.toString().padStart(2, '0');
-      const current = new Date();
-      const dateStr = formatPLDateOnly(current);
-      const timeStr = formatPLTimeOnly(current);
-      const text = 'Aktualne przez ' + countdown + ' • ' + dateStr + ', ' + timeStr;
-      priceTimerEls.forEach((el)=>{ el.textContent = text; });
-    }
+    function updateConfigSummary(calc){
+      if (!extraSummaryWrap) return;
+      extraSummaryWrap.hidden = false;
+      const qty = getCurrentQty();
+      const summaryCalc = calc || computeTotalForQty(qty);
+      const expressEnabled = !!(expressEl && expressEl.checked);
 
-    function restartPriceTimer(){
-      if (!priceTimerEls.length) return;
-      priceTimerDeadline = Date.now() + PRICE_TIMER_DURATION;
-      updatePriceTimerDisplay();
-      if (!priceTimerInterval){
-        priceTimerInterval = window.setInterval(updatePriceTimerDisplay, 1000);
+      if (sumShapeEl) sumShapeEl.textContent = shapeLabel(shape);
+      if (sumMaterialEl) sumMaterialEl.textContent = materialEl?.value || 'Folia ekonomiczna';
+      if (sumFinishEl) sumFinishEl.textContent = finishLabel();
+      if (sumLaminateEl) sumLaminateEl.textContent = (laminateEl && laminateEl.checked) ? 'Tak' : 'Nie';
+      if (sumExpressEl) sumExpressEl.textContent = expressEnabled ? 'Przyspieszona (+15%)' : 'Standardowa';
+
+      let leadDays = leadTimeBusinessDays(summaryCalc.total_area || 0);
+      if (expressEnabled){ leadDays = Math.max(0, leadDays - 1); }
+      else if (leadDays < 0){ leadDays = 0; }
+
+      if (sumLeadtimeEl){
+        const shipDate = addBusinessDays(new Date(), leadDays);
+        sumLeadtimeEl.textContent = formatPLDateOnly(shipDate);
+        if (expressEnabled){ sumLeadtimeEl.dataset.express = '1'; }
+        else { delete sumLeadtimeEl.dataset.express; }
       }
     }
 
-    function stopPriceTimer(){
-      if (priceTimerInterval){
-        window.clearInterval(priceTimerInterval);
-        priceTimerInterval = null;
-      }
-    }
+    const markExtraUsed = ()=>{
+      updateConfigSummary();
+    };
 
     function updateSummaryMeta(calc){
-      if (sumShapeEl)    sumShapeEl.textContent = 'Kształt: ' + shapeLabel(shape);
-      if (sumMaterialEl) sumMaterialEl.textContent = 'Materiał: ' + (materialEl?.value || 'Folia ekonomiczna');
-      if (sumLaminateEl) sumLaminateEl.textContent = 'Laminat: ' + (laminateEl?.checked ? 'tak' : 'nie');
+      if (sumShapeEl)    sumShapeEl.textContent = shapeLabel(shape);
+      if (sumMaterialEl) sumMaterialEl.textContent = materialEl?.value || 'Folia ekonomiczna';
+      if (sumFinishEl)   sumFinishEl.textContent = finishLabel();
+      if (sumLaminateEl) sumLaminateEl.textContent = (laminateEl && laminateEl.checked) ? 'Tak' : 'Nie';
 
       const qty = getCurrentQty();
       const c = calc || computeTotalForQty(qty);
-      const days = leadTimeBusinessDays(c.total_area || 0);
-      const target = addBusinessDays(new Date(), days);
-      const leadText = 'Wysyłka do ' + formatPLDateOnly(target);
-      if (sumLeadtimeEl) sumLeadtimeEl.textContent = leadText;
-      totalLeadOutEls.forEach((el)=>{ el.textContent = leadText; });
+      const expressEnabled = !!(expressEl && expressEl.checked);
+      if (sumExpressEl) sumExpressEl.textContent = expressEnabled ? 'Przyspieszona (+15%)' : 'Standardowa';
+      if (sumLeadtimeEl){
+        sumLeadtimeEl.textContent = '';
+        delete sumLeadtimeEl.dataset.express;
+      }
+
+      updateConfigSummary(c);
     }
 
     // popup do wyceny
@@ -2345,6 +2811,11 @@
     function updatePriceAndJSON(){
       const qty = getCurrentQty();
       const calc = computeTotalForQty(qty);
+      const expressEnabled = !!calc.express;
+      let leadDays = leadTimeBusinessDays(calc.total_area || 0);
+      if (expressEnabled){ leadDays = Math.max(0, leadDays - 1); }
+      const finishValue = currentFinishValue();
+      const finishLabelText = finishLabel(finishValue);
       const baseline = computeBaselineA(qty);
       let pctSave = 0;
       if (baseline > 0.0001){
@@ -2352,12 +2823,38 @@
         pctSave = Math.max(0, 100 - ratioPct);
       }
 
+      const safeQty = Number.isFinite(qty) && qty > 0 ? qty : 0;
+
       if (calc.total_area >= 100){
         totalOutEls.forEach((el)=> clearWooPrice(el, 'WYCENA INDYWIDUALNA'));
         totalNetOutEls.forEach((el)=> clearWooPrice(el, ''));
+        totalVatOutEls.forEach((el)=> clearWooPrice(el, ''));
+        totalUnitOutEls.forEach((el)=> clearWooPrice(el, ''));
       } else {
         totalOutEls.forEach((el)=> renderWooPrice(el, calc.total));
-        totalNetOutEls.forEach((el)=> renderWooPrice(el, calc.net, { prefix: 'Netto:' }));
+        totalNetOutEls.forEach((el)=>{
+          if (!el) return;
+          if (el.dataset && el.dataset.stbNetPlain === '1'){
+            renderWooPrice(el, calc.net);
+            return;
+          }
+          const prefix = (el.dataset && el.dataset.stbNetPrefix) ? String(el.dataset.stbNetPrefix) : 'Netto:';
+          const opts = prefix ? { prefix } : {};
+          renderWooPrice(el, calc.net, opts);
+        });
+        const vatAmount = Math.max(0, calc.total - calc.net);
+        totalVatOutEls.forEach((el)=>{
+          if (!el) return;
+          const label = (el.dataset && el.dataset.stbVatLabel) ? String(el.dataset.stbVatLabel) : 'VAT (23%):';
+          const opts = label ? { prefix: label } : {};
+          renderWooPrice(el, vatAmount, opts);
+        });
+        if (safeQty > 0){
+          const unitNet = calc.net / safeQty;
+          totalUnitOutEls.forEach((el)=> renderWooPrice(el, unitNet));
+        } else {
+          totalUnitOutEls.forEach((el)=> clearWooPrice(el, ''));
+        }
       }
       const saveText = (pctSave >= 0.5) ? ('Oszczędzasz ' + Math.round(pctSave) + '%') : '';
       totalSaveOutEls.forEach((el)=>{ el.textContent = saveText; });
@@ -2374,7 +2871,6 @@
       }
 
       updateSummaryMeta(calc);
-      restartPriceTimer();
 
       // Popup jeśli >= 100 m2
       if (calc.total_area >= 100){
@@ -2403,8 +2899,13 @@
           total_price_pln: +calc.total.toFixed(2),
           total_price_net_pln: +calc.net.toFixed(2),
           material: (materialEl && materialEl.value) ? materialEl.value : 'Folia ekonomiczna',
+          finish: finishValue,
+          finish_label: finishLabelText,
           laminate: !!(laminateEl && laminateEl.checked),
-          file: uploaded.name ? { name: uploaded.name, type: uploaded.type, size: uploaded.size } : null,
+          express_production: expressEnabled,
+          express_multiplier: calc.express_multiplier || 1,
+          lead_time_business_days: leadDays,
+          file: uploaded.name ? { name: uploaded.name, type: uploaded.type, size: uploaded.size, url: uploaded.url || null, upload_id: uploaded.uploadId || null } : null,
           text: {
             value: textObj.text || '',
             font: textObj.font || 'Inter',
@@ -2433,6 +2934,9 @@
           },
           preview_png: safePreview()
         };
+        if (uploaded.uploadId){ payload.file_upload_id = uploaded.uploadId; }
+        if (uploaded.url){ payload.file_url = uploaded.url; }
+        if (uploaded.uploadBytes){ payload.file_upload_size = uploaded.uploadBytes; }
         hidden.value = JSON.stringify(payload);
       }
     }
@@ -3011,6 +3515,7 @@
     /* ===== Modal ===== */
     const modal = byId('stb-modal');
     const modalContent = modal ? modal.querySelector('.stb-modal__content') : null;
+    const modalMain = byId('stb-modal-main');
     const openBtn = byId('stb-open-modal');
     const closeBtn = byId('stb-close-modal');
     const backdrop = modal ? modal.querySelector('[data-close]') : null;
@@ -3024,9 +3529,10 @@
     }
     function openModal(){
       ensureModalInBody();
-      if (!modal || !modalContent || !designer) return;
+      const host = modalMain || modalContent;
+      if (!modal || !host || !designer) return;
       if (!placeholder.parentNode){ designer.parentNode.insertBefore(placeholder, designer); }
-      modalContent.appendChild(designer);
+      host.appendChild(designer);
       window.scrollTo(0,0);
       const sb = window.innerWidth - document.documentElement.clientWidth;
       if (sb>0) document.body.style.paddingRight = sb + 'px';

@@ -12,6 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 final class WC_Sticker_Builder {
 
     const FIELD = 'stb_payload';
+    const MAX_UPLOAD_MB = 25;
 
     public static function init() {
         add_shortcode( 'sticker_builder', [ __CLASS__, 'render_shortcode' ] );
@@ -22,6 +23,505 @@ final class WC_Sticker_Builder {
         add_filter( 'woocommerce_get_item_data', [ __CLASS__, 'show_item_data' ], 10, 2 );
         add_filter( 'woocommerce_cart_item_thumbnail', [ __CLASS__, 'cart_item_thumbnail' ], 10, 3 );
         add_filter( 'woocommerce_add_to_cart_redirect', [ __CLASS__, 'maybe_redirect_to_cart' ] );
+
+        add_action( 'wp_ajax_stb_upload_file', [ __CLASS__, 'ajax_upload_file' ] );
+        add_action( 'wp_ajax_nopriv_stb_upload_file', [ __CLASS__, 'ajax_upload_file' ] );
+        add_action( 'woocommerce_checkout_create_order_line_item', [ __CLASS__, 'add_order_line_item_meta' ], 10, 4 );
+
+        add_action( 'init', [ __CLASS__, 'maybe_schedule_cleanup' ] );
+        add_action( 'stb_cleanup_uploads', [ __CLASS__, 'cleanup_stale_uploads' ] );
+    }
+
+    protected static function upload_nonce_action() {
+        return 'stb-upload';
+    }
+
+    public static function max_upload_bytes() {
+        $limit = absint( self::MAX_UPLOAD_MB ) * 1024 * 1024;
+
+        $ini_limits = [
+            wp_convert_hr_to_bytes( ini_get( 'upload_max_filesize' ) ),
+            wp_convert_hr_to_bytes( ini_get( 'post_max_size' ) ),
+        ];
+
+        foreach ( $ini_limits as $ini_limit ) {
+            if ( $ini_limit > 0 ) {
+                $limit = $limit > 0 ? min( $limit, $ini_limit ) : $ini_limit;
+            }
+        }
+
+        return max( 0, $limit );
+    }
+
+    protected static function allowed_mimes() {
+        $mimes = [
+            'jpg|jpeg|jpe' => 'image/jpeg',
+            'png'          => 'image/png',
+            'pdf'          => 'application/pdf',
+        ];
+
+        return apply_filters( 'stb_allowed_mimes', $mimes );
+    }
+
+    protected static function allowed_extensions() {
+        $extensions = [];
+        foreach ( self::allowed_mimes() as $exts => $mime ) {
+            foreach ( explode( '|', $exts ) as $ext ) {
+                $ext = strtolower( trim( $ext ) );
+                if ( $ext ) {
+                    $extensions[] = $ext;
+                }
+            }
+        }
+
+        return array_values( array_unique( $extensions ) );
+    }
+
+    protected static function disallowed_extensions() {
+        return [ 'svg', 'svgz', 'zip', 'rar', '7z', 'tar', 'gz', 'tgz', 'php', 'phtml', 'phar', 'cgi', 'pl', 'asp', 'aspx', 'js', 'exe', 'sh', 'bat', 'cmd' ];
+    }
+
+    protected static function is_extension_allowed( $filename ) {
+        $ext = strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) );
+        if ( ! $ext ) {
+            return false;
+        }
+
+        if ( in_array( $ext, self::disallowed_extensions(), true ) ) {
+            return false;
+        }
+
+        return in_array( $ext, self::allowed_extensions(), true );
+    }
+
+    protected static function validate_magic_signature( $file_path, $mime_type ) {
+        if ( ! $file_path || ! file_exists( $file_path ) || ! is_readable( $file_path ) ) {
+            return false;
+        }
+
+        $mime_type = strtolower( trim( (string) $mime_type ) );
+        $fh        = fopen( $file_path, 'rb' );
+        if ( ! $fh ) {
+            return false;
+        }
+
+        $bytes = fread( $fh, 12 );
+        fclose( $fh );
+
+        if ( ! $bytes ) {
+            return false;
+        }
+
+        $signature = bin2hex( substr( $bytes, 0, 8 ) );
+
+        switch ( $mime_type ) {
+            case 'image/jpeg':
+                return 0 === strpos( $signature, 'ffd8ff' );
+            case 'image/png':
+                return '89504e470d0a1a0a' === $signature;
+            case 'application/pdf':
+                return 0 === strpos( $bytes, '%PDF-' );
+            default:
+                return false;
+        }
+    }
+
+    protected static function detect_mime_type( $file_path ) {
+        if ( ! $file_path || ! file_exists( $file_path ) ) {
+            return '';
+        }
+
+        if ( function_exists( 'finfo_open' ) ) {
+            $finfo = finfo_open( FILEINFO_MIME_TYPE );
+            if ( $finfo ) {
+                $type = finfo_file( $finfo, $file_path );
+                finfo_close( $finfo );
+                if ( $type ) {
+                    return strtolower( $type );
+                }
+            }
+        }
+
+        if ( function_exists( 'mime_content_type' ) ) {
+            $type = mime_content_type( $file_path );
+            if ( $type ) {
+                return strtolower( $type );
+            }
+        }
+
+        return '';
+    }
+
+    protected static function ensure_upload_directory_protection( $directory ) {
+        if ( ! $directory ) {
+            return;
+        }
+
+        $uploads = wp_upload_dir();
+        if ( empty( $uploads['basedir'] ) ) {
+            return;
+        }
+
+        $base = trailingslashit( wp_normalize_path( $uploads['basedir'] ) ) . 'stb';
+        $dir  = wp_normalize_path( $directory );
+
+        if ( strpos( $dir, $base ) !== 0 ) {
+            return;
+        }
+
+        $marker_start = '# BEGIN Sticker Builder Upload Protection';
+        $marker_end   = '# END Sticker Builder Upload Protection';
+        $rules        = $marker_start . "\n"
+            . '<FilesMatch "\\.(php|phtml|phar|cgi|pl|asp|aspx)$">' . "\n"
+            . "  Require all denied\n"
+            . "</FilesMatch>\n"
+            . "Options -ExecCGI\n"
+            . "RemoveHandler .php .phtml .phar .cgi .pl .asp .aspx\n"
+            . $marker_end . "\n";
+
+        while ( $dir && strpos( $dir, $base ) === 0 ) {
+            if ( is_dir( $dir ) && is_writable( $dir ) ) {
+                $htaccess = trailingslashit( $dir ) . '.htaccess';
+                if ( file_exists( $htaccess ) ) {
+                    $contents = file_get_contents( $htaccess );
+                    if ( false === strpos( (string) $contents, $marker_start ) ) {
+                        if ( $contents && "\n" !== substr( $contents, -1 ) ) {
+                            $contents .= "\n";
+                        }
+                        $contents .= $rules;
+                        file_put_contents( $htaccess, $contents, LOCK_EX );
+                    }
+                } else {
+                    file_put_contents( $htaccess, $rules, LOCK_EX );
+                }
+            }
+
+            if ( $dir === $base ) {
+                break;
+            }
+
+            $dir = wp_normalize_path( dirname( $dir ) );
+        }
+    }
+
+    public static function filter_upload_dir( $dirs ) {
+        if ( ! is_array( $dirs ) ) {
+            return $dirs;
+        }
+
+        $subdir = '/stb';
+        if ( ! empty( $dirs['subdir'] ) ) {
+            $subdir .= '/' . ltrim( $dirs['subdir'], '/' );
+        }
+
+        $subdir = preg_replace( '#/+#', '/', $subdir );
+        $subdir = '/' . ltrim( $subdir, '/' );
+
+        if ( isset( $dirs['basedir'] ) ) {
+            $dirs['path'] = trailingslashit( $dirs['basedir'] ) . ltrim( $subdir, '/' );
+        }
+
+        if ( isset( $dirs['baseurl'] ) ) {
+            $dirs['url'] = trailingslashit( $dirs['baseurl'] ) . ltrim( $subdir, '/' );
+        }
+
+        $dirs['subdir'] = $subdir;
+
+        return $dirs;
+    }
+
+    protected static function upload_error_message( $code ) {
+        switch ( intval( $code ) ) {
+            case UPLOAD_ERR_INI_SIZE:
+            case UPLOAD_ERR_FORM_SIZE:
+                return __( 'Przekroczono maksymalny rozmiar pliku.', 'stb' );
+            case UPLOAD_ERR_PARTIAL:
+                return __( 'Plik został przesłany tylko częściowo.', 'stb' );
+            case UPLOAD_ERR_NO_FILE:
+                return __( 'Nie otrzymano pliku do przesłania.', 'stb' );
+            case UPLOAD_ERR_NO_TMP_DIR:
+                return __( 'Brak katalogu tymczasowego na serwerze.', 'stb' );
+            case UPLOAD_ERR_CANT_WRITE:
+                return __( 'Nie udało się zapisać pliku na dysku.', 'stb' );
+            case UPLOAD_ERR_EXTENSION:
+                return __( 'Przesyłanie pliku zostało zablokowane przez rozszerzenie PHP.', 'stb' );
+            default:
+                return __( 'Nie udało się przesłać pliku.', 'stb' );
+        }
+    }
+
+    public static function ajax_upload_file() {
+        check_ajax_referer( self::upload_nonce_action(), 'nonce' );
+
+        if ( empty( $_FILES['stb_file'] ) || ! is_array( $_FILES['stb_file'] ) ) {
+            wp_send_json_error( [ 'message' => __( 'Brak pliku w żądaniu.', 'stb' ) ] );
+        }
+
+        $file = $_FILES['stb_file'];
+        if ( ! empty( $file['error'] ) ) {
+            wp_send_json_error( [ 'message' => self::upload_error_message( $file['error'] ) ] );
+        }
+
+        $original_name = isset( $file['name'] ) ? $file['name'] : '';
+        if ( $original_name && ! self::is_extension_allowed( $original_name ) ) {
+            wp_send_json_error(
+                [
+                    'message' => __( 'Nieobsługiwany typ pliku. Dozwolone formaty: JPG, PNG lub PDF.', 'stb' ),
+                ]
+            );
+        }
+
+        $limit = self::max_upload_bytes();
+        if ( $limit > 0 && ! empty( $file['size'] ) && intval( $file['size'] ) > $limit ) {
+            wp_send_json_error(
+                [
+                    'message' => sprintf(
+                        __( 'Plik przekracza limit %s.', 'stb' ),
+                        size_format( $limit )
+                    ),
+                ]
+            );
+        }
+
+        $file['name'] = $original_name ? sanitize_file_name( $original_name ) : 'upload';
+
+        if ( $file['name'] && ! self::is_extension_allowed( $file['name'] ) ) {
+            wp_send_json_error( [ 'message' => __( 'Nieobsługiwany typ pliku.', 'stb' ) ] );
+        }
+
+        $allowed_mimes = self::allowed_mimes();
+        $checked       = wp_check_filetype_and_ext( $file['tmp_name'], $file['name'], $allowed_mimes );
+
+        if ( empty( $checked['type'] ) || empty( $checked['ext'] ) ) {
+            wp_send_json_error( [ 'message' => __( 'Nieobsługiwany typ pliku.', 'stb' ) ] );
+        }
+
+        $detected_mime = self::detect_mime_type( $file['tmp_name'] );
+        if ( $detected_mime && $checked['type'] ) {
+            $allowed_type = strtolower( $checked['type'] );
+            $valid_mimes  = [ $allowed_type ];
+            if ( 'image/jpeg' === $allowed_type ) {
+                $valid_mimes[] = 'image/pjpeg';
+            } elseif ( 'application/pdf' === $allowed_type ) {
+                $valid_mimes[] = 'application/octet-stream';
+                $valid_mimes[] = 'binary/octet-stream';
+                $valid_mimes[] = 'application/x-pdf';
+            }
+
+            if ( ! in_array( $detected_mime, $valid_mimes, true ) ) {
+                wp_send_json_error( [ 'message' => __( 'Typ pliku nie jest dozwolony.', 'stb' ) ] );
+            }
+        }
+
+        if ( ! self::validate_magic_signature( $file['tmp_name'], $checked['type'] ) ) {
+            wp_send_json_error( [ 'message' => __( 'Plik wydaje się uszkodzony lub niezgodny z deklarowanym typem.', 'stb' ) ] );
+        }
+
+        if ( ! empty( $checked['proper_filename'] ) ) {
+            $file['name'] = sanitize_file_name( $checked['proper_filename'] );
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+
+        $uploads = wp_upload_dir();
+        if ( empty( $uploads['error'] ) && ! empty( $uploads['basedir'] ) ) {
+            $target = trailingslashit( $uploads['basedir'] ) . 'stb';
+            if ( ! is_dir( $target ) ) {
+                wp_mkdir_p( $target );
+            }
+        }
+
+        add_filter( 'upload_dir', [ __CLASS__, 'filter_upload_dir' ] );
+        $upload = wp_handle_upload(
+            $file,
+            [
+                'test_form' => false,
+                'mimes'     => $allowed_mimes,
+                'test_type' => true,
+            ]
+        );
+        remove_filter( 'upload_dir', [ __CLASS__, 'filter_upload_dir' ] );
+
+        if ( isset( $upload['error'] ) && $upload['error'] ) {
+            wp_send_json_error( [ 'message' => $upload['error'] ] );
+        }
+
+        $attachment_id = 0;
+        $mime_type     = ! empty( $upload['type'] ) ? $upload['type'] : $checked['type'];
+
+        if ( ! empty( $upload['file'] ) ) {
+            $attachment = [
+                'post_title'     => sanitize_text_field( pathinfo( $file['name'], PATHINFO_FILENAME ) ),
+                'post_content'   => '',
+                'post_status'    => 'inherit',
+                'post_mime_type' => $mime_type,
+                'post_parent'    => 0,
+            ];
+
+            $attachment_id = wp_insert_attachment( $attachment, $upload['file'] );
+
+            if ( is_wp_error( $attachment_id ) ) {
+                $attachment_id = 0;
+            } elseif ( $attachment_id ) {
+                if ( wp_attachment_is_image( $attachment_id ) ) {
+                    $metadata = wp_generate_attachment_metadata( $attachment_id, $upload['file'] );
+                    if ( ! is_wp_error( $metadata ) && ! empty( $metadata ) ) {
+                        wp_update_attachment_metadata( $attachment_id, $metadata );
+                    }
+                }
+
+                update_post_meta( $attachment_id, '_stb_temp_upload', time() );
+            }
+        }
+
+        if ( ! empty( $upload['file'] ) ) {
+            self::ensure_upload_directory_protection( dirname( $upload['file'] ) );
+        }
+
+        $size = isset( $file['size'] ) ? intval( $file['size'] ) : 0;
+        if ( ! $size && ! empty( $upload['file'] ) && file_exists( $upload['file'] ) ) {
+            $size = intval( filesize( $upload['file'] ) );
+        }
+
+        wp_send_json_success(
+            [
+                'id'   => $attachment_id,
+                'url'  => ! empty( $upload['url'] ) ? esc_url_raw( $upload['url'] ) : '',
+                'size' => $size,
+                'type' => $mime_type,
+                'name' => sanitize_file_name( basename( ! empty( $upload['file'] ) ? $upload['file'] : $file['name'] ) ),
+            ]
+        );
+    }
+
+    public static function maybe_schedule_cleanup() {
+        if ( ! wp_next_scheduled( 'stb_cleanup_uploads' ) ) {
+            wp_schedule_event( time() + DAY_IN_SECONDS, 'daily', 'stb_cleanup_uploads' );
+        }
+    }
+
+    public static function cleanup_stale_uploads() {
+        $age       = apply_filters( 'stb_upload_cleanup_age', DAY_IN_SECONDS * 3 );
+        $threshold = time() - absint( $age );
+
+        $attachments = get_posts(
+            [
+                'post_type'      => 'attachment',
+                'post_status'    => 'inherit',
+                'posts_per_page' => 50,
+                'fields'         => 'ids',
+                'no_found_rows'  => true,
+                'post_parent'    => 0,
+                'meta_query'     => [
+                    [
+                        'key'     => '_stb_temp_upload',
+                        'value'   => $threshold,
+                        'compare' => '<=',
+                        'type'    => 'NUMERIC',
+                    ],
+                ],
+            ]
+        );
+
+        if ( empty( $attachments ) ) {
+            return;
+        }
+
+        foreach ( $attachments as $attachment_id ) {
+            wp_delete_attachment( $attachment_id, true );
+        }
+    }
+
+    public static function add_order_line_item_meta( $item, $cart_item_key, $values, $order ) {
+        if ( empty( $values['stb'] ) || empty( $values['stb']['payload'] ) ) { return; }
+
+        $payload = $values['stb']['payload'];
+
+        $attachment_id = 0;
+        $url           = '';
+
+        $finish_label = '';
+        $finish_slug  = '';
+        if ( isset( $payload['finish_label'] ) && is_string( $payload['finish_label'] ) ) {
+            $finish_label = sanitize_text_field( $payload['finish_label'] );
+        }
+        if ( isset( $payload['finish'] ) ) {
+            $finish_slug = sanitize_key( $payload['finish'] );
+            if ( '' === $finish_label ) {
+                $finish_label = ( 'mat' === $finish_slug ) ? __( 'Mat', 'stb' ) : __( 'Połysk', 'stb' );
+            }
+        }
+
+        $express = false;
+        if ( isset( $values['stb']['express_production'] ) ) {
+            $express = ! empty( $values['stb']['express_production'] );
+        } elseif ( isset( $payload['express_production'] ) ) {
+            $express = ! empty( $payload['express_production'] );
+        }
+
+        if ( $express ) {
+            $item->add_meta_data( __( 'Przyspieszona realizacja', 'stb' ), __( 'tak', 'stb' ), true );
+            $item->add_meta_data( '_stb_express_production', 'yes', true );
+        }
+
+        $lead_days = null;
+        if ( isset( $values['stb']['lead_time_business_days'] ) ) {
+            $lead_days = max( 0, intval( $values['stb']['lead_time_business_days'] ) );
+        } elseif ( isset( $payload['lead_time_business_days'] ) ) {
+            $lead_days = max( 0, intval( $payload['lead_time_business_days'] ) );
+        }
+
+        if ( null !== $lead_days ) {
+            $item->add_meta_data( '_stb_lead_time_days', $lead_days, true );
+        }
+
+        if ( ! empty( $values['stb']['file_upload_id'] ) ) {
+            $attachment_id = absint( $values['stb']['file_upload_id'] );
+        } elseif ( ! empty( $payload['file_upload_id'] ) ) {
+            $attachment_id = absint( $payload['file_upload_id'] );
+        }
+
+        if ( ! empty( $values['stb']['file_url'] ) ) {
+            $url = esc_url_raw( $values['stb']['file_url'] );
+        } elseif ( ! empty( $payload['file_url'] ) ) {
+            $url = esc_url_raw( $payload['file_url'] );
+        }
+
+        if ( $attachment_id && ! $url ) {
+            $maybe_url = wp_get_attachment_url( $attachment_id );
+            if ( $maybe_url ) {
+                $url = esc_url_raw( $maybe_url );
+            }
+        }
+
+        if ( $url ) {
+            $item->add_meta_data( __( 'Plik klienta', 'stb' ), $url, true );
+        }
+
+        if ( '' !== $finish_label ) {
+            $item->add_meta_data( __( 'Wykończenie', 'stb' ), $finish_label, true );
+            if ( '' !== $finish_slug ) {
+                $item->add_meta_data( '_stb_finish', $finish_slug, true );
+            }
+        }
+
+        if ( $attachment_id ) {
+            $item->add_meta_data( '_stb_file_upload_id', $attachment_id, true );
+
+            $order_id = ( is_object( $order ) && method_exists( $order, 'get_id' ) ) ? intval( $order->get_id() ) : 0;
+            if ( $order_id ) {
+                wp_update_post(
+                    [
+                        'ID'          => $attachment_id,
+                        'post_parent' => $order_id,
+                    ]
+                );
+            }
+
+            delete_post_meta( $attachment_id, '_stb_temp_upload' );
+        }
     }
 
     public static function plugin_path( $append = '' ) {
@@ -154,6 +654,23 @@ final class WC_Sticker_Builder {
                 'locale'   => $locale,
             ]
         );
+
+        $allowed_mime_values = array_values( array_unique( array_map( 'strval', array_values( self::allowed_mimes() ) ) ) );
+        $allowed_exts        = self::allowed_extensions();
+        $disallowed_exts     = self::disallowed_extensions();
+
+        wp_localize_script(
+            'sticker-builder',
+            'STB_UPLOAD',
+            [
+                'ajax_url'         => admin_url( 'admin-ajax.php' ),
+                'nonce'            => wp_create_nonce( self::upload_nonce_action() ),
+                'max_upload_bytes' => self::max_upload_bytes(),
+                'allowed_mimes'    => $allowed_mime_values,
+                'allowed_exts'     => $allowed_exts,
+                'disallowed_exts'  => $disallowed_exts,
+            ]
+        );
     }
 
     public static function render_shortcode( $atts = [], $content = '' ) {
@@ -182,6 +699,42 @@ final class WC_Sticker_Builder {
                 'qty'       => $qty,
             ];
             $cart_item_data['stb_key'] = md5( microtime() . wp_rand() );
+
+            if ( ! empty( $payload['file_upload_id'] ) ) {
+                $cart_item_data['stb']['file_upload_id'] = absint( $payload['file_upload_id'] );
+                $cart_item_data['stb']['payload']['file_upload_id'] = $cart_item_data['stb']['file_upload_id'];
+            }
+
+            if ( ! empty( $payload['file_url'] ) ) {
+                $cart_item_data['stb']['file_url'] = esc_url_raw( $payload['file_url'] );
+                $cart_item_data['stb']['payload']['file_url'] = $cart_item_data['stb']['file_url'];
+            }
+
+            if ( isset( $payload['file_upload_size'] ) ) {
+                $cart_item_data['stb']['file_upload_size'] = max( 0, intval( $payload['file_upload_size'] ) );
+                $cart_item_data['stb']['payload']['file_upload_size'] = $cart_item_data['stb']['file_upload_size'];
+            }
+
+            if ( isset( $payload['express_production'] ) ) {
+                $express = ! empty( $payload['express_production'] );
+                $cart_item_data['stb']['express_production'] = $express;
+                $cart_item_data['stb']['payload']['express_production'] = $express;
+            }
+
+            if ( isset( $payload['express_multiplier'] ) ) {
+                $multiplier = floatval( $payload['express_multiplier'] );
+                if ( $multiplier <= 0 ) {
+                    $multiplier = 1.0;
+                }
+                $cart_item_data['stb']['express_multiplier'] = $multiplier;
+                $cart_item_data['stb']['payload']['express_multiplier'] = $multiplier;
+            }
+
+            if ( isset( $payload['lead_time_business_days'] ) ) {
+                $lead_days = max( 0, intval( $payload['lead_time_business_days'] ) );
+                $cart_item_data['stb']['lead_time_business_days'] = $lead_days;
+                $cart_item_data['stb']['payload']['lead_time_business_days'] = $lead_days;
+            }
         }
 
         return $cart_item_data;
@@ -224,11 +777,43 @@ final class WC_Sticker_Builder {
                 'value' => sanitize_text_field( $p['material'] ),
             ];
         }
+        if ( isset( $p['finish_label'] ) || isset( $p['finish'] ) ) {
+            $finish_label = '';
+            if ( isset( $p['finish_label'] ) && is_string( $p['finish_label'] ) ) {
+                $finish_label = sanitize_text_field( $p['finish_label'] );
+            } elseif ( isset( $p['finish'] ) ) {
+                $finish_value = sanitize_key( $p['finish'] );
+                $finish_label = ( 'mat' === $finish_value ) ? __( 'Mat', 'stb' ) : __( 'Połysk', 'stb' );
+            }
+            if ( '' !== $finish_label ) {
+                $item_data[] = [
+                    'key'   => __( 'Wykończenie', 'stb' ),
+                    'value' => $finish_label,
+                ];
+            }
+        }
         if ( isset( $p['laminate'] ) ) {
             $item_data[] = [
                 'key'   => __( 'Laminat', 'stb' ),
                 'value' => $p['laminate'] ? 'tak' : 'nie',
             ];
+        }
+
+        if ( ! empty( $p['express_production'] ) ) {
+            $item_data[] = [
+                'key'   => __( 'Przyspieszona realizacja', 'stb' ),
+                'value' => __( 'tak', 'stb' ),
+            ];
+        }
+
+        if ( isset( $p['lead_time_business_days'] ) ) {
+            $lead_days = max( 0, intval( $p['lead_time_business_days'] ) );
+            if ( $lead_days > 0 ) {
+                $item_data[] = [
+                    'key'   => __( 'Termin (dni robocze)', 'stb' ),
+                    'value' => $lead_days,
+                ];
+            }
         }
 
         return $item_data;
@@ -239,7 +824,7 @@ final class WC_Sticker_Builder {
         $src = $cart_item['stb']['payload']['preview_png'];
         $safe = esc_url( $src );
         if ( strpos( $src, 'data:image' ) === 0 ) { $safe = $src; }
-        return '<img src="' . $safe . '" alt="' . esc_attr__( 'Podgląd', 'stb' ) . '" style="width:70px;height:auto;border-radius:6px;border:1px solid #e5e5e5;" />';
+        return '<img src="' . $safe . '" alt="' . esc_attr__( 'Podgląd', 'stb' ) . '" style="width:70px;height:auto;border-radius:8px;border:1px solid #e5e5e5;" />';
     }
 
     public static function maybe_redirect_to_cart( $url ) {
