@@ -302,7 +302,12 @@ final class WC_Sticker_Builder {
             $valid_mimes  = [ $allowed_type ];
             if ( 'image/jpeg' === $allowed_type ) {
                 $valid_mimes[] = 'image/pjpeg';
+            } elseif ( 'application/pdf' === $allowed_type ) {
+                $valid_mimes[] = 'application/octet-stream';
+                $valid_mimes[] = 'binary/octet-stream';
+                $valid_mimes[] = 'application/x-pdf';
             }
+
             if ( ! in_array( $detected_mime, $valid_mimes, true ) ) {
                 wp_send_json_error( [ 'message' => __( 'Typ pliku nie jest dozwolony.', 'stb' ) ] );
             }
