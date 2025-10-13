@@ -2022,7 +2022,13 @@
           uploadBytes:uploadedSize
         };
         transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
-        updateFileMeta(0, 0, (uploadedType || 'application/pdf'), uploadedSize, 'Podgląd PDF wymaga PDF.js (niedostępny).');
+        updateFileMeta(
+          0,
+          0,
+          (uploadedType || 'application/pdf'),
+          uploadedSize,
+          'PDF przesłany — podgląd pominięto.'
+        );
         setToolTarget(null);
         requestDraw();
         updatePriceAndJSON();
