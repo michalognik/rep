@@ -74,6 +74,9 @@ $stb_zero_net_markup = sprintf(
     esc_html__( 'Netto:', 'sticker-builder' ),
     $stb_zero_price_markup
 );
+
+$stb_qty_presets = [ 10, 50, 100, 200, 1000, 3000 ];
+$stb_default_qty = 100;
 ?>
 <div id="stb-root">
     <div class="stb-wrap">
@@ -129,67 +132,28 @@ $stb_zero_net_markup = sprintf(
                     <section class="list-section">
                         <span class="label">Nakład</span>
                         <div id="qtyList" class="opt-list">
-                            <button type="button" class="opt-item" data-qty="10" aria-pressed="false">
-                                <div class="opt-line">
-                                    <span class="opt-main">10 sztuk</span>
-                                    <span class="opt-right">
-                                        <span class="opt-price"></span>
-                                        <span class="opt-save"></span>
-                                    </span>
-                                </div>
-                            </button>
-                            <button type="button" class="opt-item" data-qty="50" aria-pressed="false">
-                                <div class="opt-line">
-                                    <span class="opt-main">50 sztuk</span>
-                                    <span class="opt-right">
-                                        <span class="opt-price"></span>
-                                        <span class="opt-save"></span>
-                                    </span>
-                                </div>
-                            </button>
-                            <button type="button" class="opt-item" data-qty="100" aria-pressed="true">
-                                <div class="opt-line">
-                                    <span class="opt-main">100 sztuk</span>
-                                    <span class="opt-right">
-                                        <span class="opt-price"></span>
-                                        <span class="opt-save"></span>
-                                    </span>
-                                </div>
-                            </button>
-                            <button type="button" class="opt-item" data-qty="200" aria-pressed="false">
-                                <div class="opt-line">
-                                    <span class="opt-main">200 sztuk</span>
-                                    <span class="opt-right">
-                                        <span class="opt-price"></span>
-                                        <span class="opt-save"></span>
-                                    </span>
-                                </div>
-                            </button>
-                            <button type="button" class="opt-item" data-qty="1000" aria-pressed="false">
-                                <div class="opt-line">
-                                    <span class="opt-main">1000 sztuk</span>
-                                    <span class="opt-right">
-                                        <span class="opt-price"></span>
-                                        <span class="opt-save"></span>
-                                    </span>
-                                </div>
-                            </button>
-                            <button type="button" class="opt-item" data-qty="3000" aria-pressed="false">
-                                <div class="opt-line">
-                                    <span class="opt-main">3000 sztuk</span>
-                                    <span class="opt-right">
-                                        <span class="opt-price"></span>
-                                        <span class="opt-save"></span>
-                                    </span>
-                                </div>
-                            </button>
+                            <?php foreach ( $stb_qty_presets as $stb_qty ) :
+                                $stb_qty = intval( $stb_qty );
+                                $stb_qty_label = number_format_i18n( $stb_qty );
+                                $stb_active = ( $stb_qty === $stb_default_qty );
+                                ?>
+                                <button type="button" class="opt-item" data-qty="<?php echo esc_attr( $stb_qty ); ?>" aria-pressed="<?php echo $stb_active ? 'true' : 'false'; ?>">
+                                    <div class="opt-line">
+                                        <span class="opt-main"><?php echo esc_html( sprintf( esc_html__( '%s sztuk', 'sticker-builder' ), $stb_qty_label ) ); ?></span>
+                                        <span class="opt-right">
+                                            <span class="opt-price"></span>
+                                            <span class="opt-save"></span>
+                                        </span>
+                                    </div>
+                                </button>
+                            <?php endforeach; ?>
                         </div>
                         <button type="button" id="qtyCustomToggle" class="opt-toggle">Własny nakład</button>
                         <div id="qtyCustom" class="opt-custom is-hidden">
                             <div class="stb-inline">
                                 <label class="stb-field">
                                     <span class="stb-lbl">Ilość (szt.)</span>
-                                    <input type="number" id="stb-qty" min="1" step="1" value="100">
+                                    <input type="number" id="stb-qty" min="1" step="1" value="<?php echo esc_attr( $stb_default_qty ); ?>">
                                 </label>
                                 <span id="qtyCustomSave" class="opt-save"></span>
                             </div>
@@ -671,7 +635,7 @@ $stb_zero_net_markup = sprintf(
                                 <line x1="14" y1="10" x2="14" y2="17" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
                             </svg>
                         </button>
-                        <button type="button" class="btn btn-primary stb-toolbar-download" id="tb-pdf" title="Pobierz naklejkę" aria-label="Pobierz naklejkę">POBIERZ NAKLEJKĘ</button>
+                        <button type="button" class="btn btn-primary stb-toolbar-download" id="tb-pdf" title="POBIERZ i ZAŁĄCZ" aria-label="POBIERZ i ZAŁĄCZ">POBIERZ i ZAŁĄCZ</button>
                     </div>
                     <div class="canvas-box">
                         <canvas id="stb-canvas" width="520" height="520" aria-label="Podgląd naklejki"></canvas>
@@ -688,6 +652,24 @@ $stb_zero_net_markup = sprintf(
         <button type="button" class="btn stb-modal__close" id="stb-close-modal">✕</button>
         <div class="stb-modal__main" id="stb-modal-main"></div>
         <div class="stb-modal__summary">
+            <div class="stb-modal__summary-controls">
+                <label class="stb-field">
+                    <span class="stb-lbl"><?php esc_html_e( 'Nakład', 'sticker-builder' ); ?></span>
+                    <select id="stb-modal-qty-select">
+                        <?php foreach ( $stb_qty_presets as $stb_qty ) :
+                            $stb_qty = intval( $stb_qty );
+                            $stb_label = sprintf( _n( '%s sztuka', '%s sztuk', $stb_qty, 'sticker-builder' ), number_format_i18n( $stb_qty ) );
+                            ?>
+                            <option value="<?php echo esc_attr( $stb_qty ); ?>" <?php selected( $stb_qty, $stb_default_qty ); ?>><?php echo esc_html( $stb_label ); ?></option>
+                        <?php endforeach; ?>
+                        <option value="custom"><?php esc_html_e( 'Własny nakład', 'sticker-builder' ); ?></option>
+                    </select>
+                </label>
+                <label class="stb-field">
+                    <span class="stb-lbl"><?php esc_html_e( 'Ilość (szt.)', 'sticker-builder' ); ?></span>
+                    <input type="number" id="stb-modal-qty-input" min="1" step="1" value="<?php echo esc_attr( $stb_default_qty ); ?>">
+                </label>
+            </div>
             <div class="price-box price-box--modal" data-stb-price-box>
                 <div class="total-val" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
                 <div class="total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>

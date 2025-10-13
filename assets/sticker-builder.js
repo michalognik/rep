@@ -393,6 +393,9 @@
     const qtyCustom = byId('qtyCustom');
     const qtyEl  = byId('stb-qty');
     const qtyCustomSave = byId('qtyCustomSave');
+    const modalQtySelect = byId('stb-modal-qty-select');
+    const modalQtyInput = byId('stb-modal-qty-input');
+    let lastPresetQty = 0;
 
     const totalOutEls     = $$('[data-stb-total]');
     const totalNetOutEls  = $$('[data-stb-total-net]');
@@ -1764,6 +1767,21 @@
       const rot = (transform.rotDeg || 0) * Math.PI/180;
       return { cx, cy, w: dw, h: dh, rot };
     }
+
+    function initialImageScale(img){
+      if (!img) return 1;
+      const iw = img.naturalWidth || img.width;
+      const ih = img.naturalHeight || img.height;
+      if (!iw || !ih) return 1;
+      const rect = getDrawRect();
+      if (!rect || !rect.w || !rect.h) return 1;
+      const cover = Math.max(rect.w/iw, rect.h/ih);
+      const contain = Math.min(rect.w/iw, rect.h/ih);
+      if (!Number.isFinite(cover) || cover <= 0) return 1;
+      const scale = contain / cover;
+      if (!Number.isFinite(scale) || scale <= 0) return 1;
+      return Math.min(1, Math.max(scale, 0.05));
+    }
     function qrBoundingBox(){
       if (!qrObj.enabled || !qrObj.canvas) return null;
       const r = getDrawRect();
@@ -2186,7 +2204,8 @@
               uploadBytes:uploadedSize
             };
             if (fName) fName.textContent = finalName || 'brak pliku';
-            transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
+            const initScale = initialImageScale(img);
+            transform = { scale:initScale, offsetX:0, offsetY:0, rotDeg:0 };
             updateFileMeta(c.width, c.height, (uploadedType || 'application/pdf'), uploadedSize, `PDF • ${pdf.numPages||1} str.`);
             setToolTarget('image');
             requestDraw();
@@ -2218,7 +2237,8 @@
             uploadBytes:uploadedSize
           };
           if (fName) fName.textContent = finalName || 'brak pliku';
-          transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
+          const initScale = initialImageScale(img);
+          transform = { scale:initScale, offsetX:0, offsetY:0, rotDeg:0 };
           updateFileMeta(img.naturalWidth||img.width, img.naturalHeight||img.height, (uploadedType || ''), uploadedSize);
           setToolTarget('image');
           requestDraw();
@@ -2837,6 +2857,63 @@
       }
     }
 
+    function syncModalQuantityControls(qty, mode){
+      const qtyInt = Math.max(1, Math.floor(Number.isFinite(qty) ? qty : parseInt(qty, 10) || 0));
+      if (modalQtyInput && qtyInt){
+        modalQtyInput.value = String(qtyInt);
+      }
+      if (modalQtySelect){
+        if (mode === 'custom'){
+          modalQtySelect.value = 'custom';
+        } else {
+          const targetVal = String(qtyInt);
+          if (modalQtySelect.querySelector(`option[value="${targetVal}"]`)){
+            modalQtySelect.value = targetVal;
+          } else {
+            modalQtySelect.value = 'custom';
+          }
+        }
+      }
+    }
+
+    function enterCustomQuantityMode(){
+      const current = getCurrentQty();
+      if (Number.isFinite(current)){ lastPresetQty = current; }
+      if (qtyCustom && qtyCustom.classList.contains('is-hidden')){
+        qtyCustom.classList.remove('is-hidden');
+      }
+      if (qtyCustomToggle){ qtyCustomToggle.setAttribute('aria-expanded','true'); }
+      if (qtyList){ $$('.opt-item[data-qty]', qtyList).forEach(b=>b.setAttribute('aria-pressed','false')); }
+      const q = Math.max(1, Math.floor(parseNum(qtyEl,1)));
+      syncModalQuantityControls(q, 'custom');
+      refreshQtyPrices();
+      updatePriceAndJSON();
+      requestDraw();
+    }
+
+    function exitCustomQuantityMode(){
+      const target = lastPresetQty || getCurrentQty() || 1;
+      applyQuantityPreset(target);
+    }
+
+    function applyQuantityPreset(q){
+      const qty = Math.max(1, parseInt(q, 10) || 1);
+      lastPresetQty = qty;
+      if (qtyList){
+        $$('.opt-item[data-qty]', qtyList).forEach(btn=>{
+          const btnQty = parseInt(btn.getAttribute('data-qty'),10)||0;
+          btn.setAttribute('aria-pressed', btnQty === qty ? 'true' : 'false');
+        });
+      }
+      if (qtyCustom){ qtyCustom.classList.add('is-hidden'); }
+      if (qtyCustomToggle){ qtyCustomToggle.setAttribute('aria-expanded','false'); }
+      if (qtyEl){ qtyEl.value = String(qty); }
+      syncModalQuantityControls(qty, 'preset');
+      refreshQtyPrices();
+      updatePriceAndJSON();
+      requestDraw();
+    }
+
     function formatPLTimeOnly(dt){
       try{
         return dt.toLocaleTimeString('pl-PL', { hour:'2-digit', minute:'2-digit' });
@@ -3120,18 +3197,72 @@
     });
 
     if (qtyList) qtyList.addEventListener('click', (e)=>{
-      const item = e.target.closest('.opt-item[data-qty]'); if(!item) return;
-      if (qtyCustom) qtyCustom.classList.add('is-hidden');
-      $$('.opt-item[data-qty]', qtyList).forEach(b=>b.setAttribute('aria-pressed','false'));
-      item.setAttribute('aria-pressed','true');
-      refreshQtyPrices(); updatePriceAndJSON(); requestDraw();
+      const item = e.target.closest('.opt-item[data-qty]');
+      if (!item) return;
+      e.preventDefault();
+      applyQuantityPreset(item.getAttribute('data-qty'));
     });
     if (qtyCustomToggle) qtyCustomToggle.addEventListener('click', ()=>{
-      if (!qtyList || !qtyCustom) return;
-      $$('.opt-item[data-qty]', qtyList).forEach(b=>b.setAttribute('aria-pressed','false'));
-      qtyCustom.classList.toggle('is-hidden'); refreshQtyPrices(); updatePriceAndJSON(); requestDraw();
+      if (!qtyCustom) return;
+      if (qtyCustom.classList.contains('is-hidden')){
+        enterCustomQuantityMode();
+      } else {
+        exitCustomQuantityMode();
+      }
     });
-    if (qtyEl) qtyEl.addEventListener('input', ()=>{ refreshQtyPrices(); updatePriceAndJSON(); });
+    if (qtyEl) qtyEl.addEventListener('input', ()=>{
+      const q = Math.max(1, Math.floor(parseNum(qtyEl,1)));
+      if (modalQtyInput){ modalQtyInput.value = String(q); }
+      if (modalQtySelect){
+        if (qtyCustom && !qtyCustom.classList.contains('is-hidden') ){
+          modalQtySelect.value = 'custom';
+        } else if (modalQtySelect.querySelector(`option[value="${q}"]`)){
+          modalQtySelect.value = String(q);
+        } else {
+          modalQtySelect.value = 'custom';
+        }
+      }
+      refreshQtyPrices();
+      updatePriceAndJSON();
+      requestDraw();
+    });
+
+    if (modalQtySelect) modalQtySelect.addEventListener('change', ()=>{
+      const val = modalQtySelect.value;
+      if (val === 'custom'){
+        if (qtyEl){
+          const q = Math.max(1, Math.floor(parseNum(qtyEl,1)));
+          if (modalQtyInput){ modalQtyInput.value = String(q); }
+        }
+        enterCustomQuantityMode();
+      } else {
+        applyQuantityPreset(val);
+        if (modalQtyInput){
+          const q = Math.max(1, parseInt(val,10)||1);
+          modalQtyInput.value = String(q);
+        }
+      }
+    });
+
+    if (modalQtyInput) modalQtyInput.addEventListener('input', ()=>{
+      const q = Math.max(1, Math.floor(parseFloat(modalQtyInput.value||'1')));
+      if (qtyEl){ qtyEl.value = String(q); }
+      if (modalQtySelect){ modalQtySelect.value = 'custom'; }
+      if (!qtyCustom || qtyCustom.classList.contains('is-hidden')){
+        enterCustomQuantityMode();
+      } else {
+        syncModalQuantityControls(q, 'custom');
+        refreshQtyPrices();
+        updatePriceAndJSON();
+        requestDraw();
+      }
+    });
+
+    lastPresetQty = getCurrentQty();
+    syncModalQuantityControls(
+      lastPresetQty,
+      (qtyCustom && !qtyCustom.classList.contains('is-hidden')) ? 'custom' : 'preset'
+    );
 
     function show(el){ if(el) el.classList.remove('is-hidden'); }
     function hide(el){ if(el) el.classList.add('is-hidden'); }
@@ -3169,10 +3300,15 @@
     if (sumQtyInp){
       sumQtyInp.addEventListener('input', ()=>{
         const q = Math.max(1, Math.floor(parseFloat(sumQtyInp.value||'1')));
-        if (qtyCustom) qtyCustom.classList.remove('is-hidden');
         if (qtyEl) qtyEl.value = String(q);
-        if (qtyList){ $$('.opt-item[data-qty]', qtyList).forEach(b=>b.setAttribute('aria-pressed','false')); }
-        refreshQtyPrices(); updatePriceAndJSON();
+        if (!qtyCustom || qtyCustom.classList.contains('is-hidden')){
+          enterCustomQuantityMode();
+        } else {
+          syncModalQuantityControls(q, 'custom');
+          refreshQtyPrices();
+          updatePriceAndJSON();
+          requestDraw();
+        }
       });
     }
 
@@ -3225,7 +3361,8 @@
         textObj.offsetX = 0; textObj.offsetY = 0; textObj.scale = 1; textObj.rotDeg = 0;
         updateTextSizeUI();
       } else {
-        transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
+        const baseScale = initialImageScale(uploaded.img || null);
+        transform = { scale:baseScale, offsetX:0, offsetY:0, rotDeg:0 };
       }
       requestDraw();
     }

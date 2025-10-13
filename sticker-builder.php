@@ -838,7 +838,7 @@ final class WC_Sticker_Builder {
 
         if ( $file_name ) {
             $item_data[] = [
-                'key'   => __( 'Plik', 'stb' ),
+                'key'   => __( 'Nazwa pliku', 'stb' ),
                 'value' => $file_name,
             ];
         }
