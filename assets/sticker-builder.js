@@ -133,6 +133,10 @@
     }
     const FIELD = 'stb_payload';
     const CART_URL = (window.STB_CART_URL || '');
+    const STB_OPTIONS = window.STB_OPTIONS || {};
+    const EXPRESS_URL = (typeof STB_OPTIONS.express_url === 'string' && STB_OPTIONS.express_url)
+      ? STB_OPTIONS.express_url
+      : '/ekspres-48h/';
 
     const PDFLib = window.PDFLib || null;         // eksport PDF
     const QRCodeLib = window.QRCode || null;      // davidshimjs
@@ -2230,6 +2234,95 @@
       }
     }
 
+    const EXPRESS_TIMEZONE = 'Europe/Warsaw';
+
+    function expressToTimeZone(date){
+      const input = date instanceof Date ? new Date(date.getTime()) : new Date(date);
+      if (Number.isNaN(input.getTime())) return new Date();
+      const zoned = new Date(input.toLocaleString('en-US', { timeZone: EXPRESS_TIMEZONE }));
+      const diff = input.getTime() - zoned.getTime();
+      return new Date(input.getTime() - diff);
+    }
+
+    function expressIsWeekend(date){
+      const day = date.getDay();
+      return day === 0 || day === 6;
+    }
+
+    function expressEnsureBusiness(date){
+      const d = new Date(date.getTime());
+      while (expressIsWeekend(d)){
+        d.setDate(d.getDate() + 1);
+      }
+      return d;
+    }
+
+    function expressNextBusinessDay(date){
+      const d = new Date(date.getTime());
+      do {
+        d.setDate(d.getDate() + 1);
+      } while (expressIsWeekend(d));
+      return d;
+    }
+
+    function expressShipDate(options){
+      const opts = options || {};
+      const expressEnabled = opts.expressEnabled !== false;
+      let order = expressToTimeZone(opts.baseDate || new Date());
+      order = expressEnsureBusiness(order);
+      if (opts.assumeCutoff && order.getHours() >= 12){
+        order = expressEnsureBusiness(expressNextBusinessDay(order));
+        order.setHours(9, 0, 0, 0);
+      }
+      const cutoff = new Date(order.getTime());
+      cutoff.setHours(12, 0, 0, 0);
+      let ship = expressNextBusinessDay(order);
+      if (order.getTime() > cutoff.getTime()){
+        ship = expressNextBusinessDay(ship);
+      }
+      if (!expressEnabled){
+        ship = expressNextBusinessDay(ship);
+      }
+      ship = expressEnsureBusiness(ship);
+      ship.setHours(9, 0, 0, 0);
+      return ship;
+    }
+
+    function formatExpressShortDate(date){
+      try{
+        const formatter = new Intl.DateTimeFormat('pl-PL', {
+          timeZone: EXPRESS_TIMEZONE,
+          weekday: 'short',
+          day: '2-digit',
+          month: '2-digit'
+        });
+        const parts = formatter.formatToParts(date);
+        let weekday = '';
+        let day = '';
+        let month = '';
+        parts.forEach(part => {
+          if (part.type === 'weekday'){ weekday = part.value; }
+          if (part.type === 'day'){ day = part.value; }
+          if (part.type === 'month'){ month = part.value; }
+        });
+        weekday = weekday.replace(/\.$/, '').replace(/\s+/g, '');
+        const tidyWeek = weekday || formatter.format(date).split(',')[0].replace(/\.$/, '').trim();
+        const tidyDay = day || String(date.getDate()).padStart(2, '0');
+        const tidyMonth = month || String(date.getMonth() + 1).padStart(2, '0');
+        return `${tidyWeek}, ${tidyDay}.${tidyMonth}`;
+      }catch(err){
+        const weekdays = ['nd','pon','wt','śr','czw','pt','sob'];
+        const dd = String(date.getDate()).padStart(2,'0');
+        const mm = String(date.getMonth()+1).padStart(2,'0');
+        return `${weekdays[date.getDay()]}, ${dd}.${mm}`;
+      }
+    }
+
+    function expressEtaText(){
+      const ship = expressShipDate({ expressEnabled:true });
+      return 'Wysyłka: ' + formatExpressShortDate(ship) + ' • Dostawa +1 dzień';
+    }
+
     function updatePriceTimerDisplay(){
       if (!priceTimerEls.length) return;
       if (!priceTimerDeadline){
@@ -2279,7 +2372,11 @@
       const target = addBusinessDays(new Date(), days);
       const leadText = 'Wysyłka do ' + formatPLDateOnly(target);
       if (sumLeadtimeEl) sumLeadtimeEl.textContent = leadText;
-      totalLeadOutEls.forEach((el)=>{ el.textContent = leadText; });
+      const expressLabel = expressEtaText();
+      const expressLink = escapeAttr(EXPRESS_URL || '/ekspres-48h/');
+      const combinedHtml = `<span class="stb-lead-standard">${escapeHtml(leadText)}</span>` +
+        `<span class="stb-express-inline-link">Potrzebujesz szybciej? <a href="${expressLink}">Ekspres 48h (winyl)</a> — ${escapeHtml(expressLabel)}</span>`;
+      totalLeadOutEls.forEach((el)=>{ if (el) el.innerHTML = combinedHtml; });
     }
 
     // popup do wyceny

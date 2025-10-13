@@ -74,8 +74,15 @@ $stb_zero_net_markup = sprintf(
     esc_html__( 'Netto:', 'sticker-builder' ),
     $stb_zero_price_markup
 );
+
+$stb_express_url = esc_url( home_url( '/ekspres-48h/' ) );
 ?>
 <div id="stb-root">
+    <div class="stb-standard-banner" role="note">
+        <strong>Potrzebujesz szybciej?</strong>
+        <span>Ekspresowe presety winylowe wysyłamy w 48h.</span>
+        <a href="<?php echo $stb_express_url; ?>">Ekspres 48h (winyl)</a>
+    </div>
     <div class="stb-wrap">
         <div class="stb-steps">
             <div class="stb-card stb-step is-active" id="stb-step-1" aria-hidden="false">
@@ -202,6 +209,7 @@ $stb_zero_net_markup = sprintf(
                         <div class="total-net" id="stb-total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
                         <div class="total-save" id="stb-total-save" data-stb-total-save aria-live="polite"></div>
                     </div>
+                    <p class="stb-express-inline-hint">Ekspres dotyczy tylko presetów w trybie 48h – laminacja dostępna w trybie standard (eco-solvent: odgazowanie; latex/UV: +12–24 h).</p>
                 </div>
                 <div class="step-footer">
                     <button type="button" class="btn btn-primary btn-step" id="stb-step1-next">Dalej</button>
