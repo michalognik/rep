@@ -29,7 +29,25 @@ final class WC_Sticker_Builder {
         add_action( 'woocommerce_checkout_create_order_line_item', [ __CLASS__, 'add_order_line_item_meta' ], 10, 4 );
 
         add_action( 'init', [ __CLASS__, 'maybe_schedule_cleanup' ] );
+        add_action( 'init', [ __CLASS__, 'ensure_upload_root_ready' ], 5 );
         add_action( 'stb_cleanup_uploads', [ __CLASS__, 'cleanup_stale_uploads' ] );
+    }
+
+    public static function ensure_upload_root_ready() {
+        $uploads = wp_upload_dir();
+        if ( ! empty( $uploads['error'] ) || empty( $uploads['basedir'] ) ) {
+            return;
+        }
+
+        $base = trailingslashit( $uploads['basedir'] ) . 'stb';
+
+        if ( ! is_dir( $base ) ) {
+            wp_mkdir_p( $base );
+        }
+
+        if ( is_dir( $base ) ) {
+            self::ensure_upload_directory_protection( $base );
+        }
     }
 
     protected static function upload_nonce_action() {
@@ -182,6 +200,7 @@ final class WC_Sticker_Builder {
         while ( $dir && strpos( $dir, $base ) === 0 ) {
             if ( is_dir( $dir ) && is_writable( $dir ) ) {
                 $htaccess = trailingslashit( $dir ) . '.htaccess';
+                $index    = trailingslashit( $dir ) . 'index.php';
                 if ( file_exists( $htaccess ) ) {
                     $contents = file_get_contents( $htaccess );
                     if ( false === strpos( (string) $contents, $marker_start ) ) {
@@ -193,6 +212,10 @@ final class WC_Sticker_Builder {
                     }
                 } else {
                     file_put_contents( $htaccess, $rules, LOCK_EX );
+                }
+
+                if ( ! file_exists( $index ) ) {
+                    file_put_contents( $index, "<?php\n// Silence is golden.\n", LOCK_EX );
                 }
             }
 
