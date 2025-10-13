@@ -1581,8 +1581,9 @@
       }
 
       if (delBtn){
-        delBtn.disabled = !uploaded.img;
-        delBtn.style.opacity = uploaded.img ? '1' : '.6';
+        const hasUploadAsset = !!(uploaded.img || uploaded.uploadId || uploaded.url);
+        delBtn.disabled = !hasUploadAsset;
+        delBtn.style.opacity = hasUploadAsset ? '1' : '.6';
       }
 
       updateTextSizeUI();
@@ -1986,17 +1987,11 @@
       }
 
       const isPDF = (f.type && f.type.toLowerCase().includes('pdf')) || /\.pdf$/i.test(name);
-      if (isPDF){
-        if (shape==='diecut'){
-          alert('Tryb DIECUT wspiera tylko PNG z przezroczystością.');
-          clearImage();
-          return;
-        }
-        if (!window.pdfjsLib || typeof window.pdfjsLib.getDocument!=='function'){
-          alert('Podgląd PDF wymaga PDF.js (brak biblioteki).');
-          clearImage();
-          return;
-        }
+      const canPreviewPDF = !!(window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function');
+      if (isPDF && shape==='diecut'){
+        alert('Tryb DIECUT wspiera tylko PNG z przezroczystością.');
+        clearImage();
+        return;
       }
 
       const uploadInfo = await uploadFileToServer(f);
@@ -2012,6 +2007,26 @@
 
       if (uploadSummary){
         uploadSummary.textContent = `${name || 'Plik'} • ${prettyBytes(uploadedSize)}`;
+      }
+
+      if (isPDF && !canPreviewPDF){
+        uploaded = {
+          name,
+          type:(uploadedType || 'application/pdf'),
+          size:uploadedSize,
+          dataURL:null,
+          img:null,
+          pdf:null,
+          uploadId:uploadedId,
+          url:uploadedUrl,
+          uploadBytes:uploadedSize
+        };
+        transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
+        updateFileMeta(0, 0, (uploadedType || 'application/pdf'), uploadedSize, 'Podgląd PDF wymaga PDF.js (niedostępny).');
+        setToolTarget(null);
+        requestDraw();
+        updatePriceAndJSON();
+        return;
       }
 
       if (isPDF){
