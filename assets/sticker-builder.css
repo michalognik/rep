@@ -373,7 +373,8 @@
   justify-items:stretch;
 }
 #stb-root .step-price-panel .price-box{ justify-items:end; width:100%; justify-self:end; }
-#stb-root .price-box{
+#stb-root .price-box,
+.stb-modal__summary .price-box{
   border:1px solid var(--line);
   border-radius:8px;
   padding:16px;
@@ -382,19 +383,22 @@
   justify-items:end;
   background:linear-gradient(135deg, rgba(237,242,255,.85), rgba(255,255,255,.95));
 }
-#stb-root .price-box--modal{
-  justify-items:stretch;
-  text-align:left;
-  gap:18px;
+#stb-root .price-box--modal,
+.stb-modal__summary .price-box--modal{
+  justify-items:end;
+  text-align:right;
+  gap:8px;
 }
-#stb-root .total-val{
+#stb-root .total-val,
+.stb-modal__summary .total-val{
   font-size:1.95rem;
   line-height:1.1;
   font-weight:800;
   color:#0e214a;
   text-align:right;
 }
-#stb-root .total-net{
+#stb-root .total-net,
+.stb-modal__summary .total-net{
   font-size:.95rem;
   font-weight:500;
   color:var(--muted);
@@ -404,7 +408,8 @@
   padding:0;
   margin-top:-2px;
 }
-#stb-root .total-vat{
+#stb-root .total-vat,
+.stb-modal__summary .total-vat{
   font-size:.86rem;
   font-weight:600;
   color:var(--muted);
@@ -412,7 +417,8 @@
   letter-spacing:.01em;
   white-space:nowrap;
 }
-#stb-root .total-unit{
+#stb-root .total-unit,
+.stb-modal__summary .total-unit{
   display:flex;
   gap:4px;
   align-items:baseline;
@@ -422,30 +428,35 @@
   letter-spacing:.02em;
   line-height:1.1;
 }
-#stb-root .total-unit .woocommerce-Price-amount.amount{
+#stb-root .total-unit .woocommerce-Price-amount.amount,
+.stb-modal__summary .total-unit .woocommerce-Price-amount.amount{
   font-weight:600;
   font-size:.82rem;
   color:inherit;
 }
-#stb-root .total-gross{
+#stb-root .total-gross,
+.stb-modal__summary .total-gross{
   width:100%;
   display:grid;
   gap:6px;
   justify-items:end;
 }
-#stb-root .total-gross-label{
+#stb-root .total-gross-label,
+.stb-modal__summary .total-gross-label{
   font-size:.72rem;
   font-weight:700;
   letter-spacing:.08em;
   text-transform:uppercase;
   color:var(--accent);
 }
-#stb-root .price-breakdown{
+#stb-root .price-breakdown,
+.stb-modal__summary .price-breakdown{
   width:100%;
   display:grid;
   gap:10px;
 }
-#stb-root .price-breakdown-row{
+#stb-root .price-breakdown-row,
+.stb-modal__summary .price-breakdown-row{
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -453,29 +464,34 @@
   font-size:.84rem;
   color:var(--muted);
 }
-#stb-root .price-breakdown-label{
+#stb-root .price-breakdown-label,
+.stb-modal__summary .price-breakdown-label{
   font-weight:600;
   letter-spacing:.02em;
 }
-#stb-root .price-breakdown-value{
+#stb-root .price-breakdown-value,
+.stb-modal__summary .price-breakdown-value{
   display:flex;
   align-items:center;
   gap:6px;
   font-weight:700;
   color:var(--ink);
 }
-#stb-root .price-breakdown-value .woocommerce-Price-amount.amount{
+#stb-root .price-breakdown-value .woocommerce-Price-amount.amount,
+.stb-modal__summary .price-breakdown-value .woocommerce-Price-amount.amount{
   font-weight:700;
   color:inherit;
 }
-#stb-root .price-breakdown-row--unit .total-unit-label{
+#stb-root .price-breakdown-row--unit .total-unit-label,
+.stb-modal__summary .price-breakdown-row--unit .total-unit-label{
   font-size:.7rem;
   font-weight:600;
   color:var(--muted);
   letter-spacing:.08em;
   text-transform:uppercase;
 }
-#stb-root .price-breakdown-row--unit .total-unit-value{
+#stb-root .price-breakdown-row--unit .total-unit-value,
+.stb-modal__summary .price-breakdown-row--unit .total-unit-value{
   display:flex;
   align-items:center;
 }

@@ -465,6 +465,15 @@ final class WC_Sticker_Builder {
         $attachment_id = 0;
         $url           = '';
 
+        $file_name = '';
+        if ( ! empty( $values['stb']['file_name'] ) ) {
+            $file_name = sanitize_file_name( $values['stb']['file_name'] );
+        } elseif ( ! empty( $payload['file'] ) && is_array( $payload['file'] ) && ! empty( $payload['file']['name'] ) ) {
+            $file_name = sanitize_file_name( $payload['file']['name'] );
+        } elseif ( ! empty( $payload['file_name'] ) ) {
+            $file_name = sanitize_file_name( $payload['file_name'] );
+        }
+
         $finish_label = '';
         $finish_slug  = '';
         if ( isset( $payload['finish_label'] ) && is_string( $payload['finish_label'] ) ) {
@@ -521,6 +530,11 @@ final class WC_Sticker_Builder {
 
         if ( $url ) {
             $item->add_meta_data( __( 'Plik klienta', 'stb' ), $url, true );
+        }
+
+        if ( $file_name ) {
+            $item->add_meta_data( __( 'Nazwa pliku', 'stb' ), $file_name, true );
+            $item->add_meta_data( '_stb_file_name', $file_name, true );
         }
 
         if ( '' !== $finish_label ) {
@@ -749,6 +763,21 @@ final class WC_Sticker_Builder {
                 $cart_item_data['stb']['payload']['file_url'] = $cart_item_data['stb']['file_url'];
             }
 
+            $file_name = '';
+            if ( ! empty( $payload['file'] ) && is_array( $payload['file'] ) && ! empty( $payload['file']['name'] ) ) {
+                $file_name = sanitize_file_name( $payload['file']['name'] );
+            } elseif ( ! empty( $payload['file_name'] ) ) {
+                $file_name = sanitize_file_name( $payload['file_name'] );
+            }
+
+            if ( $file_name ) {
+                $cart_item_data['stb']['file_name']                 = $file_name;
+                $cart_item_data['stb']['payload']['file_name']      = $file_name;
+                if ( isset( $cart_item_data['stb']['payload']['file'] ) && is_array( $cart_item_data['stb']['payload']['file'] ) ) {
+                    $cart_item_data['stb']['payload']['file']['name'] = $file_name;
+                }
+            }
+
             if ( isset( $payload['file_upload_size'] ) ) {
                 $cart_item_data['stb']['file_upload_size'] = max( 0, intval( $payload['file_upload_size'] ) );
                 $cart_item_data['stb']['payload']['file_upload_size'] = $cart_item_data['stb']['file_upload_size'];
@@ -797,6 +826,22 @@ final class WC_Sticker_Builder {
     public static function show_item_data( $item_data, $cart_item ) {
         if ( empty( $cart_item['stb']['payload'] ) ) { return $item_data; }
         $p = $cart_item['stb']['payload'];
+
+        $file_name = '';
+        if ( ! empty( $cart_item['stb']['file_name'] ) ) {
+            $file_name = sanitize_file_name( $cart_item['stb']['file_name'] );
+        } elseif ( ! empty( $p['file'] ) && is_array( $p['file'] ) && ! empty( $p['file']['name'] ) ) {
+            $file_name = sanitize_file_name( $p['file']['name'] );
+        } elseif ( ! empty( $p['file_name'] ) ) {
+            $file_name = sanitize_file_name( $p['file_name'] );
+        }
+
+        if ( $file_name ) {
+            $item_data[] = [
+                'key'   => __( 'Plik', 'stb' ),
+                'value' => $file_name,
+            ];
+        }
 
         if ( isset( $p['width_cm'], $p['height_cm'] ) ) {
             $item_data[] = [

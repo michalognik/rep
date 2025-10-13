@@ -2112,10 +2112,15 @@
       const uploadedType = uploadInfo.type || f.type || '';
       const uploadedUrl  = uploadInfo.url || '';
       const uploadedId   = uploadInfo.uploadId || 0;
+      const serverName   = (uploadInfo && uploadInfo.name) ? String(uploadInfo.name) : '';
+      const finalName    = serverName || name || '';
 
       if (uploadSummary){
-        uploadSummary.textContent = `${name || 'Plik'} • ${prettyBytes(uploadedSize)}`;
+        const label = finalName || 'Plik';
+        uploadSummary.textContent = `${label} • ${prettyBytes(uploadedSize)}`;
       }
+
+      if (fName) fName.textContent = finalName || 'brak pliku';
 
       let pdfReady = false;
       if (isPDF){
@@ -2124,7 +2129,7 @@
 
       if (isPDF && !pdfReady){
         uploaded = {
-          name,
+          name: finalName,
           type:(uploadedType || 'application/pdf'),
           size:uploadedSize,
           dataURL:null,
@@ -2134,6 +2139,7 @@
           url:uploadedUrl,
           uploadBytes:uploadedSize
         };
+        if (fName) fName.textContent = finalName || 'brak pliku';
         transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
         updateFileMeta(
           0,
@@ -2169,7 +2175,7 @@
           const img = new Image();
           img.onload = ()=>{
             uploaded = {
-              name,
+              name: finalName,
               type:(uploadedType || 'application/pdf'),
               size:uploadedSize,
               dataURL,
@@ -2179,6 +2185,7 @@
               url:uploadedUrl,
               uploadBytes:uploadedSize
             };
+            if (fName) fName.textContent = finalName || 'brak pliku';
             transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
             updateFileMeta(c.width, c.height, (uploadedType || 'application/pdf'), uploadedSize, `PDF • ${pdf.numPages||1} str.`);
             setToolTarget('image');
@@ -2200,7 +2207,7 @@
         const img = new Image();
         img.onload = ()=>{
           uploaded = {
-            name,
+            name: finalName,
             type:(uploadedType || ''),
             size:uploadedSize,
             dataURL,
@@ -2210,6 +2217,7 @@
             url:uploadedUrl,
             uploadBytes:uploadedSize
           };
+          if (fName) fName.textContent = finalName || 'brak pliku';
           transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
           updateFileMeta(img.naturalWidth||img.width, img.naturalHeight||img.height, (uploadedType || ''), uploadedSize);
           setToolTarget('image');
@@ -3075,6 +3083,8 @@
         if (uploaded.uploadId){ payload.file_upload_id = uploaded.uploadId; }
         if (uploaded.url){ payload.file_url = uploaded.url; }
         if (uploaded.uploadBytes){ payload.file_upload_size = uploaded.uploadBytes; }
+        if (uploaded.name){ payload.file_name = uploaded.name; }
+        if (uploaded.type){ payload.file_type = uploaded.type; }
         hidden.value = JSON.stringify(payload);
       }
     }
@@ -3281,6 +3291,95 @@
       ctx2.clip();
       try{ drawFn(); }
       finally{ ctx2.restore(); }
+    }
+
+    async function attachGeneratedPdfToOrder(pdfBlob, fileName, meta={}){
+      if (!pdfBlob || typeof pdfBlob !== 'object' || typeof pdfBlob.size === 'undefined'){ return; }
+
+      const limitBytes = (Number.isFinite(MAX_UPLOAD_BYTES) && MAX_UPLOAD_BYTES > 0) ? MAX_UPLOAD_BYTES : null;
+      const blobSize = Number.isFinite(pdfBlob.size) ? pdfBlob.size : 0;
+      if (limitBytes && blobSize > limitBytes){
+        if (uploadSummary){
+          const limitLabel = prettyBytes(limitBytes);
+          const sizeLabel  = prettyBytes(blobSize);
+          uploadSummary.innerHTML = `Projekt ma ${sizeLabel} i przekracza limit ${limitLabel}.<br>Większe pliki prześlij proszę przez <a href="https://wetransfer.com/" target="_blank" rel="noopener">WeTransfer</a> i dołącz link w uwagach do zamówienia.`;
+        }
+        return;
+      }
+
+      const fallbackName = fileName && typeof fileName === 'string' && fileName.trim() ? fileName.trim() : `naklejka_${Date.now()}.pdf`;
+      let fileForUpload = null;
+      if (typeof File === 'function'){
+        try {
+          fileForUpload = new File([pdfBlob], fallbackName, { type:'application/pdf' });
+        } catch(err) {
+          fileForUpload = null;
+        }
+      }
+      if (!fileForUpload){
+        try {
+          const blobSlice = pdfBlob.slice ? pdfBlob.slice(0, pdfBlob.size, 'application/pdf') : pdfBlob;
+          fileForUpload = blobSlice;
+        } catch(err){
+          fileForUpload = pdfBlob;
+        }
+        try { fileForUpload.name = fallbackName; } catch(err){}
+      }
+
+      if (uploadSummary){
+        uploadSummary.textContent = 'Zapisuję projekt w zamówieniu…';
+      }
+
+      try {
+        const uploadInfo = await uploadFileToServer(fileForUpload);
+        if (!uploadInfo){
+          if (uploadSummary){
+            uploadSummary.textContent = 'Nie udało się zapisać projektu.';
+          }
+          return;
+        }
+
+        const savedName = uploadInfo.name || fallbackName;
+        const savedSize = uploadInfo.size || blobSize;
+        const savedType = uploadInfo.type || 'application/pdf';
+        const uploadId  = uploadInfo.uploadId || 0;
+        const uploadUrl = uploadInfo.url || '';
+
+        if (fName){ fName.textContent = savedName || 'brak pliku'; }
+        if (uploadSummary){
+          const label = savedName || 'Plik';
+          uploadSummary.textContent = `Projekt zapisany: ${label} • ${prettyBytes(savedSize)}`;
+        }
+
+        uploaded.name = savedName;
+        uploaded.type = savedType;
+        uploaded.size = savedSize;
+        uploaded.uploadId = uploadId;
+        uploaded.url = uploadUrl;
+        uploaded.uploadBytes = savedSize;
+
+        const pageCount = (()=>{
+          if (meta && Number.isFinite(meta.pages)){ return Math.max(1, Math.round(meta.pages)); }
+          if (uploaded.pdf && Number.isFinite(uploaded.pdf.numPages)){ return Math.max(1, Math.round(uploaded.pdf.numPages)); }
+          return 1;
+        })();
+
+        uploaded.pdf = Object.assign({}, uploaded.pdf || {}, { numPages: pageCount, generated: true });
+
+        if (meta && meta.previewDataURL && !uploaded.dataURL){
+          uploaded.dataURL = meta.previewDataURL;
+        }
+
+        const widthPx  = meta && Number.isFinite(meta.widthPx)  ? Math.max(0, Math.round(meta.widthPx))  : 0;
+        const heightPx = meta && Number.isFinite(meta.heightPx) ? Math.max(0, Math.round(meta.heightPx)) : 0;
+        updateFileMeta(widthPx, heightPx, savedType, savedSize, `PDF • ${pageCount} str.`);
+        updatePriceAndJSON();
+      } catch(err){
+        console.error('Projekt PDF — zapis nie powiódł się:', err);
+        if (uploadSummary){
+          uploadSummary.textContent = 'Nie udało się zapisać projektu.';
+        }
+      }
     }
 
     async function exportPDF300(){
@@ -3514,6 +3613,23 @@
 
         const blob = new Blob([pdfBytes], {type:'application/pdf'});
         const name = `naklejka_${String(w_cm).replace('.',',')}x${String(h_cm).replace('.',',')}cm_${DPI}dpi.pdf`;
+        let pageCount = 1;
+        try {
+          if (typeof pdf.getPageCount === 'function'){
+            const maybe = pdf.getPageCount();
+            if (Number.isFinite(maybe) && maybe > 0){ pageCount = Math.round(maybe); }
+          } else if (typeof pdf.getPages === 'function'){
+            const pages = pdf.getPages();
+            if (Array.isArray(pages) && pages.length){ pageCount = pages.length; }
+          }
+        } catch(err){}
+        const previewDataURL = (off && typeof off.toDataURL === 'function') ? off.toDataURL('image/png') : null;
+        attachGeneratedPdfToOrder(blob, name, {
+          widthPx: pxW,
+          heightPx: pxH,
+          pages: pageCount,
+          previewDataURL
+        });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a);
         a.click();
