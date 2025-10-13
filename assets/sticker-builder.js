@@ -158,6 +158,115 @@
       ['jpg','jpeg','jpe','png','pdf'].forEach(ext => allowedExtSet.add(ext));
     }
     const disallowedExtSet = new Set(disallowedExtList.map(val => String(val || '').toLowerCase()).filter(Boolean));
+
+    const pdfjsCfgRaw = (()=>{
+      const nested = (uploadConfig && typeof uploadConfig.pdfjs === 'object' && uploadConfig.pdfjs) ? uploadConfig.pdfjs : {};
+      return { ...nested };
+    })();
+    const pdfjsConfig = {
+      mainUrl: typeof pdfjsCfgRaw.main_url === 'string' ? pdfjsCfgRaw.main_url : (typeof pdfjsCfgRaw.main === 'string' ? pdfjsCfgRaw.main : ''),
+      workerUrl: typeof pdfjsCfgRaw.worker_url === 'string' ? pdfjsCfgRaw.worker_url : (typeof pdfjsCfgRaw.worker === 'string' ? pdfjsCfgRaw.worker : ''),
+      cdnMainUrl: typeof pdfjsCfgRaw.cdn_main_url === 'string' ? pdfjsCfgRaw.cdn_main_url : (typeof pdfjsCfgRaw.cdn_main === 'string' ? pdfjsCfgRaw.cdn_main : ''),
+      cdnWorkerUrl: typeof pdfjsCfgRaw.cdn_worker_url === 'string' ? pdfjsCfgRaw.cdn_worker_url : (typeof pdfjsCfgRaw.cdn_worker === 'string' ? pdfjsCfgRaw.cdn_worker : ''),
+    };
+    if (!pdfjsConfig.mainUrl && typeof uploadConfig.pdfjs_main_url === 'string'){ pdfjsConfig.mainUrl = uploadConfig.pdfjs_main_url; }
+    if (!pdfjsConfig.workerUrl && typeof uploadConfig.pdfjs_worker_url === 'string'){ pdfjsConfig.workerUrl = uploadConfig.pdfjs_worker_url; }
+    if (!pdfjsConfig.cdnMainUrl && typeof uploadConfig.pdfjs_cdn_main === 'string'){ pdfjsConfig.cdnMainUrl = uploadConfig.pdfjs_cdn_main; }
+    if (!pdfjsConfig.cdnWorkerUrl && typeof uploadConfig.pdfjs_cdn_worker === 'string'){ pdfjsConfig.cdnWorkerUrl = uploadConfig.pdfjs_cdn_worker; }
+    const scriptLoadCache = new Map();
+    function loadScriptOnce(url){
+      if (!url || typeof url !== 'string'){ return Promise.reject(new Error('Brak adresu skryptu.')); }
+      const trimmed = url.trim();
+      if (!trimmed){ return Promise.reject(new Error('Pusty adres skryptu.')); }
+      if (scriptLoadCache.has(trimmed)){ return scriptLoadCache.get(trimmed); }
+      const scripts = Array.prototype.slice.call(document.getElementsByTagName('script') || []);
+      const norm = (src)=>{
+        if (!src || typeof src !== 'string'){ return ''; }
+        const qIndex = src.indexOf('?');
+        return qIndex >= 0 ? src.slice(0, qIndex) : src;
+      };
+      const trimmedNorm = norm(trimmed);
+      const existing = scripts.find(s => s && typeof s.src === 'string' && (s.src === trimmed || norm(s.src) === trimmedNorm));
+      if (existing){
+        const promise = new Promise((resolve, reject)=>{
+          const done = ()=> resolve(true);
+          if (existing.readyState === 'complete' || existing.dataset && existing.dataset.loaded === '1'){
+            done();
+          } else {
+            existing.addEventListener('load', ()=>{ existing.dataset.loaded = '1'; done(); }, { once:true });
+            existing.addEventListener('error', ()=> reject(new Error('Nie udało się załadować skryptu: '+ trimmed)), { once:true });
+          }
+        });
+        const tracked = promise.catch(err=>{ scriptLoadCache.delete(trimmed); throw err; });
+        scriptLoadCache.set(trimmed, tracked);
+        return tracked;
+      }
+      const promise = new Promise((resolve, reject)=>{
+        const script = document.createElement('script');
+        script.src = trimmed;
+        script.async = true;
+        script.onload = ()=>{ script.dataset.loaded = '1'; resolve(true); };
+        script.onerror = ()=>{
+          if (script.parentNode){ script.parentNode.removeChild(script); }
+          reject(new Error('Nie udało się załadować skryptu: ' + trimmed));
+        };
+        document.head.appendChild(script);
+      });
+      const tracked = promise.then(res=> res).catch(err=>{ scriptLoadCache.delete(trimmed); throw err; });
+      scriptLoadCache.set(trimmed, tracked);
+      return tracked;
+    }
+    let pdfjsEnsurePromise = null;
+    async function ensurePdfJs(){
+      if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function'){
+        if (window.pdfjsLib.GlobalWorkerOptions && pdfjsConfig && typeof pdfjsConfig.workerUrl === 'string' && pdfjsConfig.workerUrl){
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsConfig.workerUrl;
+        }
+        return true;
+      }
+      if (pdfjsEnsurePromise){ return pdfjsEnsurePromise; }
+      pdfjsEnsurePromise = (async()=>{
+        const sources = [];
+        if (pdfjsConfig && typeof pdfjsConfig.mainUrl === 'string' && pdfjsConfig.mainUrl){ sources.push(pdfjsConfig.mainUrl); }
+        if (pdfjsConfig && typeof pdfjsConfig.cdnMainUrl === 'string' && pdfjsConfig.cdnMainUrl && !sources.includes(pdfjsConfig.cdnMainUrl)){
+          sources.push(pdfjsConfig.cdnMainUrl);
+        }
+        for (const src of sources){
+          try{
+            await loadScriptOnce(src);
+            if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function'){
+              break;
+            }
+          }catch(err){
+            console.warn(err);
+          }
+        }
+        const ready = !!(window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function');
+        if (ready && window.pdfjsLib.GlobalWorkerOptions){
+          let workerSrc = '';
+          if (pdfjsConfig && typeof pdfjsConfig.workerUrl === 'string' && pdfjsConfig.workerUrl){
+            workerSrc = pdfjsConfig.workerUrl;
+          } else if (pdfjsConfig && typeof pdfjsConfig.cdnWorkerUrl === 'string' && pdfjsConfig.cdnWorkerUrl){
+            workerSrc = pdfjsConfig.cdnWorkerUrl;
+          }
+          if (workerSrc){
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+          }
+        }
+        return ready;
+      })();
+      try{
+        const ok = await pdfjsEnsurePromise;
+        if (!ok){
+          pdfjsEnsurePromise = null;
+        }
+        return ok;
+      }catch(err){
+        pdfjsEnsurePromise = null;
+        console.error('ensurePdfJs error:', err);
+        return false;
+      }
+    }
     if (!disallowedExtSet.size){
       ['svg','svgz','zip','rar','7z','php','phtml','phar','js','cgi','pl','asp','aspx'].forEach(ext => disallowedExtSet.add(ext));
     }
@@ -1987,7 +2096,6 @@
       }
 
       const isPDF = (f.type && f.type.toLowerCase().includes('pdf')) || /\.pdf$/i.test(name);
-      const canPreviewPDF = !!(window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function');
       if (isPDF && shape==='diecut'){
         alert('Tryb DIECUT wspiera tylko PNG z przezroczystością.');
         clearImage();
@@ -2009,7 +2117,12 @@
         uploadSummary.textContent = `${name || 'Plik'} • ${prettyBytes(uploadedSize)}`;
       }
 
-      if (isPDF && !canPreviewPDF){
+      let pdfReady = false;
+      if (isPDF){
+        pdfReady = await ensurePdfJs();
+      }
+
+      if (isPDF && !pdfReady){
         uploaded = {
           name,
           type:(uploadedType || 'application/pdf'),
@@ -2027,7 +2140,7 @@
           0,
           (uploadedType || 'application/pdf'),
           uploadedSize,
-          'PDF przesłany — podgląd pominięto.'
+          'Nie udało się załadować biblioteki podglądu PDF.'
         );
         setToolTarget(null);
         requestDraw();
@@ -2037,8 +2150,12 @@
 
       if (isPDF){
         try{
+          const pdfjsLib = window.pdfjsLib;
+          if (!pdfjsLib || typeof pdfjsLib.getDocument !== 'function'){
+            throw new Error('Biblioteka PDF.js nie została zainicjalizowana.');
+          }
           const buf = await f.arrayBuffer();
-          const pdfTask = window.pdfjsLib.getDocument({ data: new Uint8Array(buf) });
+          const pdfTask = pdfjsLib.getDocument({ data: new Uint8Array(buf) });
           const pdf = await pdfTask.promise;
           const page = await pdf.getPage(1);
           const viewport = page.getViewport({ scale: 2 });

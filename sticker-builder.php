@@ -682,6 +682,16 @@ final class WC_Sticker_Builder {
         $allowed_exts        = self::allowed_extensions();
         $disallowed_exts     = self::disallowed_extensions();
 
+        $pdfjs_cdn_version = '4.6.82';
+        $pdfjs_cdn_main    = apply_filters(
+            'stb_pdfjs_cdn_main',
+            sprintf( 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/%s/pdf.min.js', $pdfjs_cdn_version )
+        );
+        $pdfjs_cdn_worker  = apply_filters(
+            'stb_pdfjs_cdn_worker',
+            sprintf( 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/%s/pdf.worker.min.js', $pdfjs_cdn_version )
+        );
+
         wp_localize_script(
             'sticker-builder',
             'STB_UPLOAD',
@@ -692,6 +702,12 @@ final class WC_Sticker_Builder {
                 'allowed_mimes'    => $allowed_mime_values,
                 'allowed_exts'     => $allowed_exts,
                 'disallowed_exts'  => $disallowed_exts,
+                'pdfjs'            => [
+                    'main_url'     => $have_pdfjs ? esc_url_raw( self::plugin_url( $pdfjs_main_rel ) ) : '',
+                    'worker_url'   => $have_pdfjs ? esc_url_raw( self::plugin_url( $pdfjs_worker_rel ) ) : '',
+                    'cdn_main_url' => esc_url_raw( $pdfjs_cdn_main ),
+                    'cdn_worker_url' => esc_url_raw( $pdfjs_cdn_worker ),
+                ],
             ]
         );
     }
