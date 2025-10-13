@@ -2224,34 +2224,49 @@
           const page = await pdf.getPage(1);
           const viewport = page.getViewport({ scale: 2 });
           const c = document.createElement('canvas');
-          const cctx = c.getContext('2d');
           c.width  = Math.max(1, Math.ceil(viewport.width));
           c.height = Math.max(1, Math.ceil(viewport.height));
+          const cctx = c.getContext('2d');
           await page.render({ canvasContext: cctx, viewport }).promise;
 
-          const dataURL = c.toDataURL('image/png');
-          const img = new Image();
-          img.onload = ()=>{
-            uploaded = {
-              name: finalName,
-              type:(uploadedType || 'application/pdf'),
-              size:uploadedSize,
-              dataURL,
-              img,
-              pdf:{ numPages: pdf.numPages||1 },
-              uploadId:uploadedId,
-              url:uploadedUrl,
-              uploadBytes:uploadedSize
-            };
-            if (fName) fName.textContent = finalName || 'brak pliku';
-            const initScale = initialImageScale(img);
-            transform = { scale:initScale, offsetX:0, offsetY:0, rotDeg:0 };
-            updateFileMeta(c.width, c.height, (uploadedType || 'application/pdf'), uploadedSize, `PDF • ${pdf.numPages||1} str.`);
-            setToolTarget('image');
-            requestDraw();
-            updatePriceAndJSON();
+          let previewSource = c;
+          if (typeof window.createImageBitmap === 'function'){
+            try{
+              previewSource = await window.createImageBitmap(c);
+            }catch(bitmapErr){
+              console.warn('createImageBitmap failed, falling back to canvas preview.', bitmapErr);
+              previewSource = c;
+            }
+          }
+
+          let dataURL = '';
+          try{
+            dataURL = c.toDataURL('image/png');
+          }catch(toDataUrlErr){
+            console.warn('PDF preview data URL failed:', toDataUrlErr);
+          }
+
+          const pxW = c.width;
+          const pxH = c.height;
+
+          uploaded = {
+            name: finalName,
+            type:(uploadedType || 'application/pdf'),
+            size:uploadedSize,
+            dataURL: dataURL || null,
+            img: previewSource,
+            pdf:{ numPages: pdf.numPages||1 },
+            uploadId:uploadedId,
+            url:uploadedUrl,
+            uploadBytes:uploadedSize
           };
-          img.src = dataURL;
+          if (fName) fName.textContent = finalName || 'brak pliku';
+          const initScale = initialImageScale(uploaded.img);
+          transform = { scale:initScale, offsetX:0, offsetY:0, rotDeg:0 };
+          updateFileMeta(pxW, pxH, (uploadedType || 'application/pdf'), uploadedSize, `PDF • ${pdf.numPages||1} str.`);
+          setToolTarget('image');
+          requestDraw();
+          updatePriceAndJSON();
         }catch(err){
           console.error('PDF preview error:', err);
           alert('Nie udało się wczytać PDF (szczegóły w konsoli).');
