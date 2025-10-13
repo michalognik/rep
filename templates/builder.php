@@ -652,9 +652,18 @@ $stb_default_qty = 100;
         <button type="button" class="btn stb-modal__close" id="stb-close-modal">✕</button>
         <div class="stb-modal__main" id="stb-modal-main"></div>
         <div class="stb-modal__summary">
-            <div class="stb-modal__summary-controls">
-                <label class="stb-field">
-                    <span class="stb-lbl"><?php esc_html_e( 'Nakład', 'sticker-builder' ); ?></span>
+            <div class="price-box price-box--modal" data-stb-price-box>
+                <div class="total-val" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
+                <div class="total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
+                <div class="total-unit">
+                    <span class="total-unit-value" data-stb-total-unit><?php echo wp_kses_post( $stb_zero_price_markup ); ?></span>
+                    <span class="total-unit-label"><?php esc_html_e( 'cena/szt.', 'sticker-builder' ); ?></span>
+                </div>
+                <div class="total-save" data-stb-total-save aria-live="polite"></div>
+            </div>
+            <div class="stb-modal__summary-controls" role="group" aria-label="<?php esc_attr_e( 'Zmień nakład w kreatorze', 'sticker-builder' ); ?>">
+                <label class="stb-field modal-qty-control">
+                    <span class="stb-lbl modal-qty-control__label"><?php esc_html_e( 'Nakład', 'sticker-builder' ); ?></span>
                     <select id="stb-modal-qty-select">
                         <?php foreach ( $stb_qty_presets as $stb_qty ) :
                             $stb_qty = intval( $stb_qty );
@@ -665,19 +674,10 @@ $stb_default_qty = 100;
                         <option value="custom"><?php esc_html_e( 'Własny nakład', 'sticker-builder' ); ?></option>
                     </select>
                 </label>
-                <label class="stb-field">
-                    <span class="stb-lbl"><?php esc_html_e( 'Ilość (szt.)', 'sticker-builder' ); ?></span>
+                <label class="stb-field modal-qty-control">
+                    <span class="stb-lbl modal-qty-control__label"><?php esc_html_e( 'Ilość (szt.)', 'sticker-builder' ); ?></span>
                     <input type="number" id="stb-modal-qty-input" min="1" step="1" value="<?php echo esc_attr( $stb_default_qty ); ?>">
                 </label>
-            </div>
-            <div class="price-box price-box--modal" data-stb-price-box>
-                <div class="total-val" data-stb-total><?php echo wp_kses_post( $stb_zero_price_markup ); ?></div>
-                <div class="total-net" data-stb-total-net><?php echo wp_kses_post( $stb_zero_net_markup ); ?></div>
-                <div class="total-unit">
-                    <span class="total-unit-value" data-stb-total-unit><?php echo wp_kses_post( $stb_zero_price_markup ); ?></span>
-                    <span class="total-unit-label"><?php esc_html_e( 'cena/szt.', 'sticker-builder' ); ?></span>
-                </div>
-                <div class="total-save" data-stb-total-save aria-live="polite"></div>
             </div>
         </div>
     </div>

@@ -217,10 +217,47 @@
       return tracked;
     }
     let pdfjsEnsurePromise = null;
-    async function ensurePdfJs(){
+    function pickPdfGlobal(){
       if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function'){
-        if (window.pdfjsLib.GlobalWorkerOptions && pdfjsConfig && typeof pdfjsConfig.workerUrl === 'string' && pdfjsConfig.workerUrl){
-          window.pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsConfig.workerUrl;
+        return window.pdfjsLib;
+      }
+      const alt = window['pdfjs-dist/build/pdf'] || window.pdfjsDistBuildPdf;
+      if (alt && typeof alt.getDocument === 'function'){
+        window.pdfjsLib = alt;
+        return alt;
+      }
+      return null;
+    }
+
+    function guessWorkerUrl(src){
+      if (!src || typeof src !== 'string') return '';
+      const trimmed = src.trim();
+      if (!trimmed) return '';
+      const parts = trimmed.split('?');
+      const base = parts[0];
+      if (!base) return '';
+      if (base.endsWith('pdf.min.js')){
+        parts[0] = base.replace('pdf.min.js', 'pdf.worker.min.js');
+        return parts.join('?');
+      }
+      return '';
+    }
+
+    async function ensurePdfJs(){
+      const existing = pickPdfGlobal();
+      if (existing){
+        if (existing.GlobalWorkerOptions){
+          let workerSrc = '';
+          if (pdfjsConfig && typeof pdfjsConfig.workerUrl === 'string' && pdfjsConfig.workerUrl){
+            workerSrc = pdfjsConfig.workerUrl;
+          } else if (pdfjsConfig && typeof pdfjsConfig.cdnWorkerUrl === 'string' && pdfjsConfig.cdnWorkerUrl){
+            workerSrc = pdfjsConfig.cdnWorkerUrl;
+          } else if (pdfjsConfig && typeof pdfjsConfig.mainUrl === 'string'){
+            workerSrc = guessWorkerUrl(pdfjsConfig.mainUrl);
+          }
+          if (workerSrc){
+            existing.GlobalWorkerOptions.workerSrc = workerSrc;
+          }
         }
         return true;
       }
@@ -241,16 +278,19 @@
             console.warn(err);
           }
         }
-        const ready = !!(window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function');
-        if (ready && window.pdfjsLib.GlobalWorkerOptions){
+        const lib = pickPdfGlobal();
+        const ready = !!(lib && typeof lib.getDocument === 'function');
+        if (ready && lib.GlobalWorkerOptions){
           let workerSrc = '';
           if (pdfjsConfig && typeof pdfjsConfig.workerUrl === 'string' && pdfjsConfig.workerUrl){
             workerSrc = pdfjsConfig.workerUrl;
           } else if (pdfjsConfig && typeof pdfjsConfig.cdnWorkerUrl === 'string' && pdfjsConfig.cdnWorkerUrl){
             workerSrc = pdfjsConfig.cdnWorkerUrl;
+          } else if (pdfjsConfig && typeof pdfjsConfig.mainUrl === 'string'){
+            workerSrc = guessWorkerUrl(pdfjsConfig.mainUrl);
           }
           if (workerSrc){
-            window.pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+            lib.GlobalWorkerOptions.workerSrc = workerSrc;
           }
         }
         return ready;
