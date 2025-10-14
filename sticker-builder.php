@@ -14,6 +14,11 @@ final class WC_Sticker_Builder {
     const FIELD = 'stb_payload';
     const MAX_UPLOAD_MB = 25;
 
+    /** @var bool */
+    protected static $assets_enqueued = false;
+    /** @var bool */
+    protected static $force_enqueue_assets = false;
+
     public static function init() {
         add_shortcode( 'sticker_builder', [ __CLASS__, 'render_shortcode' ] );
         add_action( 'wp_enqueue_scripts', [ __CLASS__, 'enqueue_assets' ] );
@@ -572,7 +577,48 @@ final class WC_Sticker_Builder {
     }
 
     public static function enqueue_assets() {
-        if ( ! is_product() ) { return; }
+        if ( self::$assets_enqueued ) {
+            self::$force_enqueue_assets = false;
+            return;
+        }
+
+        if ( ! self::should_enqueue_assets() ) {
+            return;
+        }
+
+        self::enqueue_assets_bundle();
+        self::$force_enqueue_assets = false;
+    }
+
+    protected static function should_enqueue_assets() {
+        if ( self::$force_enqueue_assets ) {
+            return true;
+        }
+
+        if ( is_admin() ) {
+            return false;
+        }
+
+        if ( function_exists( 'is_product' ) && is_product() ) {
+            return true;
+        }
+
+        if ( is_singular() ) {
+            $post = get_post();
+            if ( $post && has_shortcode( $post->post_content, 'sticker_builder' ) ) {
+                return true;
+            }
+        }
+
+        return (bool) apply_filters( 'stb_enqueue_assets', false );
+    }
+
+    protected static function enqueue_assets_bundle() {
+        if ( self::$assets_enqueued ) {
+            return;
+        }
+
+        self::$assets_enqueued = true;
 
         /* ===== CSS ===== */
         $css_rel = 'assets/sticker-builder.css';
@@ -727,6 +773,11 @@ final class WC_Sticker_Builder {
     }
 
     public static function render_shortcode( $atts = [], $content = '' ) {
+        if ( ! self::$assets_enqueued ) {
+            self::$force_enqueue_assets = true;
+            self::enqueue_assets();
+        }
+
         ob_start();
         $tpl = self::plugin_path( 'templates/builder.php' );
         if ( file_exists( $tpl ) ) {
