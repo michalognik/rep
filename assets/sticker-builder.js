@@ -174,6 +174,35 @@
     if (!pdfjsConfig.cdnMainUrl && typeof uploadConfig.pdfjs_cdn_main === 'string'){ pdfjsConfig.cdnMainUrl = uploadConfig.pdfjs_cdn_main; }
     if (!pdfjsConfig.cdnWorkerUrl && typeof uploadConfig.pdfjs_cdn_worker === 'string'){ pdfjsConfig.cdnWorkerUrl = uploadConfig.pdfjs_cdn_worker; }
     const scriptLoadCache = new Map();
+
+    function imageFromDataURL(dataURL){
+      return new Promise((resolve, reject)=>{
+        if (!dataURL || typeof dataURL !== 'string'){
+          reject(new Error('Brak danych obrazu.'));
+          return;
+        }
+        const img = new Image();
+        img.onload = ()=> resolve(img);
+        img.onerror = (err)=> reject(err || new Error('Nie udało się wczytać obrazu.'));
+        img.src = dataURL;
+      });
+    }
+
+    function sourcePixelWidth(src){
+      if (!src) return 0;
+      if (typeof src.naturalWidth === 'number' && src.naturalWidth > 0){ return src.naturalWidth; }
+      if (typeof src.videoWidth === 'number' && src.videoWidth > 0){ return src.videoWidth; }
+      if (typeof src.width === 'number' && src.width > 0){ return src.width; }
+      return 0;
+    }
+
+    function sourcePixelHeight(src){
+      if (!src) return 0;
+      if (typeof src.naturalHeight === 'number' && src.naturalHeight > 0){ return src.naturalHeight; }
+      if (typeof src.videoHeight === 'number' && src.videoHeight > 0){ return src.videoHeight; }
+      if (typeof src.height === 'number' && src.height > 0){ return src.height; }
+      return 0;
+    }
     function loadScriptOnce(url){
       if (!url || typeof url !== 'string'){ return Promise.reject(new Error('Brak adresu skryptu.')); }
       const trimmed = url.trim();
@@ -1481,7 +1510,7 @@
 
     // oblicza bezpieczną skalę/offset pod obrys
     function diecutSafePlacement(rect, img, userScale, rotDeg, ringPx, padPx){
-      const iw = img.width, ih = img.height;
+      const iw = sourcePixelWidth(img), ih = sourcePixelHeight(img);
       const base = Math.max(rect.w/iw, rect.h/ih);
       const theta = (rotDeg||0) * Math.PI/180;
       const cos = Math.abs(Math.cos(theta)), sin = Math.abs(Math.sin(theta));
@@ -1585,7 +1614,7 @@
         const offX = fit.clampOffsetX(transform.offsetX||0);
         const offY = fit.clampOffsetY(transform.offsetY||0);
 
-        const iw = uploaded.img.width, ih = uploaded.img.height;
+        const iw = sourcePixelWidth(uploaded.img), ih = sourcePixelHeight(uploaded.img);
         const base = Math.max(r.w/iw, r.h/ih);
         const dw = Math.max(1, Math.round(iw * base * effScale));
         const dh = Math.max(1, Math.round(ih * base * effScale));
@@ -1680,7 +1709,7 @@
       } else if (uploaded.img){
         ctx.save();
         ctx.beginPath(); const path=shapePath(); path(); ctx.closePath(); ctx.clip();
-        const iw=uploaded.img.width, ih=uploaded.img.height;
+        const iw=sourcePixelWidth(uploaded.img), ih=sourcePixelHeight(uploaded.img);
         const base=Math.max(r.w/iw, r.h/ih), scale=base*(transform.scale||1);
         const dw=iw*scale, dh=ih*scale, cx=r.x+r.w/2, cy=r.y+r.h/2;
         ctx.translate(cx + (transform.offsetX||0), cy + (transform.offsetY||0));
@@ -1790,8 +1819,8 @@
       const outlineOn = !!outOnEl?.checked;
       const outlineMM = Math.max(0, parseFloat(outMMEl?.value)||0);
       const outlinePx = outlineOn ? (pxPerCm(r) * (outlineMM/10)) : 0;
-      const iw = uploaded.img.width;
-      const ih = uploaded.img.height;
+      const iw = sourcePixelWidth(uploaded.img);
+      const ih = sourcePixelHeight(uploaded.img);
       if (!iw || !ih) return null;
       let scale = 1;
       let offX = transform.offsetX || 0;
@@ -1815,8 +1844,8 @@
 
     function initialImageScale(img){
       if (!img) return 1;
-      const iw = img.naturalWidth || img.width;
-      const ih = img.naturalHeight || img.height;
+      const iw = sourcePixelWidth(img);
+      const ih = sourcePixelHeight(img);
       if (!iw || !ih) return 1;
       const rect = getDrawRect();
       if (!rect || !rect.w || !rect.h) return 1;
@@ -2304,12 +2333,59 @@
 
           const { previewSource, dataURL, pxW, pxH, pageCount } = rendered;
 
+          let previewDataURL = dataURL || '';
+          if (!previewDataURL && previewSource){
+            try {
+              const cv = document.createElement('canvas');
+              const w = Math.max(1, Math.round(pxW || previewSource.width || previewSource.naturalWidth || previewSource.videoWidth || 0));
+              const h = Math.max(1, Math.round(pxH || previewSource.height || previewSource.naturalHeight || previewSource.videoHeight || 0));
+              cv.width = w;
+              cv.height = h;
+              const cctx2 = cv.getContext('2d');
+              cctx2.drawImage(previewSource, 0, 0, w, h);
+              previewDataURL = cv.toDataURL('image/png');
+            } catch(err){
+              console.warn('PDF preview fallback dataURL failed:', err);
+            }
+          }
+
+          let previewImage = null;
+          if (previewDataURL){
+            try {
+              previewImage = await imageFromDataURL(previewDataURL);
+            } catch(err){
+              console.warn('PDF preview image decode failed:', err);
+              previewImage = null;
+            }
+          }
+          if (!previewImage && previewSource){
+            try {
+              const cv = document.createElement('canvas');
+              const w = Math.max(1, Math.round(pxW || previewSource.width || previewSource.naturalWidth || previewSource.videoWidth || 0));
+              const h = Math.max(1, Math.round(pxH || previewSource.height || previewSource.naturalHeight || previewSource.videoHeight || 0));
+              cv.width = w;
+              cv.height = h;
+              const cctx2 = cv.getContext('2d');
+              cctx2.drawImage(previewSource, 0, 0, w, h);
+              const fallbackUrl = cv.toDataURL('image/png');
+              previewDataURL = previewDataURL || fallbackUrl;
+              previewImage = await imageFromDataURL(fallbackUrl);
+            } catch(err){
+              console.warn('PDF preview fallback decode failed:', err);
+              previewImage = null;
+            }
+          }
+
+          if (!previewImage){
+            throw new Error('Nie udało się przygotować podglądu PDF.');
+          }
+
           uploaded = {
             name: finalName,
             type:(uploadedType || 'application/pdf'),
             size:uploadedSize,
-            dataURL: dataURL || null,
-            img: previewSource,
+            dataURL: previewDataURL || null,
+            img: previewImage,
             pdf:{ numPages: pageCount, workerDisabled: workerRetried },
             uploadId:uploadedId,
             url:uploadedUrl,
@@ -2349,7 +2425,7 @@
           if (fName) fName.textContent = finalName || 'brak pliku';
           const initScale = initialImageScale(img);
           transform = { scale:initScale, offsetX:0, offsetY:0, rotDeg:0 };
-          updateFileMeta(img.naturalWidth||img.width, img.naturalHeight||img.height, (uploadedType || ''), uploadedSize);
+          updateFileMeta(sourcePixelWidth(img), sourcePixelHeight(img), (uploadedType || ''), uploadedSize);
           setToolTarget('image');
           requestDraw();
           updatePriceAndJSON();
@@ -3285,7 +3361,7 @@
       if (wEl) wEl.value = String(parseFloat(item.getAttribute('data-w')) || 10);
       if (hEl) hEl.value = String(parseFloat(item.getAttribute('data-h')) || 10);
       if (uploaded.img){
-        updateFileMeta(uploaded.img.width, uploaded.img.height, uploaded.type, uploaded.size,
+        updateFileMeta(sourcePixelWidth(uploaded.img), sourcePixelHeight(uploaded.img), uploaded.type, uploaded.size,
           uploaded.pdf ? `PDF • ${(uploaded.pdf.numPages||1)} str.` : '');
       }
       rebuildQR(); requestDraw();
@@ -3299,7 +3375,7 @@
     if (sizeCustomBox) sizeCustomBox.addEventListener('input', (e)=>{
       if (e.target.matches('input')){
         if (uploaded.img){
-          updateFileMeta(uploaded.img.width, uploaded.img.height, uploaded.type, uploaded.size,
+          updateFileMeta(sourcePixelWidth(uploaded.img), sourcePixelHeight(uploaded.img), uploaded.type, uploaded.size,
             uploaded.pdf ? `PDF • ${(uploaded.pdf.numPages||1)} str.` : '');
         }
         rebuildQR(); requestDraw();
@@ -3392,7 +3468,7 @@
       if (hEl) hEl.value = String(h);
       if (sizeList){ $$('.opt-item[data-w]', sizeList).forEach(b=>b.setAttribute('aria-pressed','false')); }
       if (uploaded.img){
-        updateFileMeta(uploaded.img.width, uploaded.img.height, uploaded.type, uploaded.size,
+        updateFileMeta(sourcePixelWidth(uploaded.img), sourcePixelHeight(uploaded.img), uploaded.type, uploaded.size,
           uploaded.pdf ? `PDF • ${(uploaded.pdf.numPages||1)} str.` : '');
       }
       rebuildQR(); requestDraw();
@@ -3670,7 +3746,7 @@
               const ringPxPrev = outlineEnabled ? (pxPerCm(rPrev) * (outlineMM/10)) : 0;
               const ringPxOut  = ringPxPrev > 0 ? Math.max(1, Math.round(ringPxPrev * ((kx+ky)/2))) : 0;
 
-              const iw = uploaded.img.width, ih = uploaded.img.height;
+              const iw = sourcePixelWidth(uploaded.img), ih = sourcePixelHeight(uploaded.img);
               const basePrev = Math.max(rPrev.w/iw, rPrev.h/ih);
 
               const fit = diecutSafePlacement(rPrev, uploaded.img, (transform.scale||1), (transform.rotDeg||0), ringPxPrev, 2);
@@ -3769,7 +3845,7 @@
             });
           } else {
             exportShapeClip(octx, pxW, pxH, ()=>{
-              const iw=uploaded.img.width, ih=uploaded.img.height;
+              const iw=sourcePixelWidth(uploaded.img), ih=sourcePixelHeight(uploaded.img);
               const base=Math.max(pxW/iw, pxH/ih)*(transform.scale||1);
               const dw=iw*base, dh=ih*base;
               const cx=pxW/2 + (transform.offsetX||0)*kx;
