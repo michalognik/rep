@@ -398,9 +398,6 @@ final class WC_Sticker_Builder {
                 if ( $mime_type && 0 === strpos( $mime_type, 'image/' ) ) {
                     $should_generate_metadata = true;
                 }
-                if ( 'application/pdf' === $mime_type ) {
-                    $should_generate_metadata = true;
-                }
 
                 if ( $should_generate_metadata && file_exists( $upload['file'] ) ) {
                     $metadata = wp_generate_attachment_metadata( $attachment_id, $upload['file'] );
@@ -423,81 +420,6 @@ final class WC_Sticker_Builder {
             $size = intval( filesize( $upload['file'] ) );
         }
 
-        $preview_url       = '';
-        $preview_width     = 0;
-        $preview_height    = 0;
-        $preview_page_count = 0;
-
-        if ( $attachment_id ) {
-            $image_src = wp_get_attachment_image_src( $attachment_id, 'full' );
-            if ( is_array( $image_src ) && ! empty( $image_src[0] ) ) {
-                $preview_url   = esc_url_raw( $image_src[0] );
-                $preview_width = isset( $image_src[1] ) ? intval( $image_src[1] ) : 0;
-                $preview_height = isset( $image_src[2] ) ? intval( $image_src[2] ) : 0;
-            }
-
-            if ( ! $preview_url && 'application/pdf' === $mime_type && function_exists( 'wp_get_pdf_thumbnail_url' ) ) {
-                $thumb = wp_get_pdf_thumbnail_url( $attachment_id );
-                if ( $thumb ) {
-                    $preview_url = esc_url_raw( $thumb );
-                }
-            }
-
-            $meta_array = is_array( $attachment_metadata ) ? $attachment_metadata : [];
-            if ( empty( $meta_array ) ) {
-                $maybe_meta = wp_get_attachment_metadata( $attachment_id );
-                if ( ! is_wp_error( $maybe_meta ) && is_array( $maybe_meta ) ) {
-                    $meta_array = $maybe_meta;
-                }
-            }
-
-            if ( isset( $meta_array['width'] ) && $preview_width <= 0 ) {
-                $preview_width = intval( $meta_array['width'] );
-            }
-            if ( isset( $meta_array['height'] ) && $preview_height <= 0 ) {
-                $preview_height = intval( $meta_array['height'] );
-            }
-            if ( isset( $meta_array['pages'] ) ) {
-                $preview_page_count = max( $preview_page_count, intval( $meta_array['pages'] ) );
-            }
-            if ( isset( $meta_array['pdf'] ) && is_array( $meta_array['pdf'] ) ) {
-                if ( isset( $meta_array['pdf']['pages'] ) ) {
-                    $preview_page_count = max( $preview_page_count, intval( $meta_array['pdf']['pages'] ) );
-                }
-            }
-
-            if ( $preview_url && ( $preview_width <= 0 || $preview_height <= 0 ) ) {
-                $uploads_dir = wp_upload_dir();
-                if ( empty( $uploads_dir['error'] ) && ! empty( $uploads_dir['baseurl'] ) && ! empty( $uploads_dir['basedir'] ) ) {
-                    $relative = str_replace( $uploads_dir['baseurl'], '', $preview_url );
-                    $relative = ltrim( $relative, '/' );
-                    $candidate = trailingslashit( $uploads_dir['basedir'] ) . $relative;
-                    if ( file_exists( $candidate ) ) {
-                        $image_info = @getimagesize( $candidate ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
-                        if ( is_array( $image_info ) ) {
-                            if ( $preview_width <= 0 && ! empty( $image_info[0] ) ) {
-                                $preview_width = intval( $image_info[0] );
-                            }
-                            if ( $preview_height <= 0 && ! empty( $image_info[1] ) ) {
-                                $preview_height = intval( $image_info[1] );
-                            }
-                        }
-                    }
-                }
-            }
-
-            if ( $preview_page_count <= 0 && 'application/pdf' === $mime_type && ! empty( $upload['file'] ) && class_exists( 'Imagick' ) ) {
-                try {
-                    $imagick = new Imagick();
-                    $imagick->pingImage( $upload['file'] );
-                    $preview_page_count = intval( $imagick->getNumberImages() );
-                    $imagick->clear();
-                    $imagick->destroy();
-                } catch ( Exception $e ) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch
-                }
-            }
-        }
-
         wp_send_json_success(
             [
                 'id'   => $attachment_id,
@@ -505,10 +427,6 @@ final class WC_Sticker_Builder {
                 'size' => $size,
                 'type' => $mime_type,
                 'name' => sanitize_file_name( basename( ! empty( $upload['file'] ) ? $upload['file'] : $file['name'] ) ),
-                'preview_url'   => $preview_url,
-                'preview_width' => $preview_width,
-                'preview_height'=> $preview_height,
-                'page_count'    => $preview_page_count,
             ]
         );
     }
