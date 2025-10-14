@@ -133,9 +133,235 @@
     }
     const FIELD = 'stb_payload';
     const CART_URL = (window.STB_CART_URL || '');
+    const uploadConfig = window.STB_UPLOAD || {};
+    const parsedUploadLimit = Number(uploadConfig.max_upload_bytes);
+    const MAX_UPLOAD_BYTES = (Number.isFinite(parsedUploadLimit) && parsedUploadLimit > 0) ? parsedUploadLimit : (25 * 1024 * 1024);
+    const allowedMimeList = Array.isArray(uploadConfig.allowed_mimes) ? uploadConfig.allowed_mimes : [];
+    const allowedExtList = Array.isArray(uploadConfig.allowed_exts) ? uploadConfig.allowed_exts : [];
+    const disallowedExtList = Array.isArray(uploadConfig.disallowed_exts) ? uploadConfig.disallowed_exts : [];
+    const allowedMimeSet = new Set(allowedMimeList.map(val => String(val || '').toLowerCase()).filter(Boolean));
+    const allowedExtSet = new Set(allowedExtList.map(val => String(val || '').toLowerCase()).filter(Boolean));
+    if (!allowedMimeSet.size){
+      allowedMimeSet.add('image/jpeg');
+      allowedMimeSet.add('image/png');
+      allowedMimeSet.add('application/pdf');
+      allowedMimeSet.add('image/pjpeg');
+    } else {
+      allowedMimeSet.add('image/pjpeg');
+    }
+    if (allowedMimeSet.has('application/pdf')){
+      allowedMimeSet.add('application/octet-stream');
+      allowedMimeSet.add('binary/octet-stream');
+      allowedMimeSet.add('application/x-pdf');
+    }
+    if (!allowedExtSet.size){
+      ['jpg','jpeg','jpe','png','pdf'].forEach(ext => allowedExtSet.add(ext));
+    }
+    const disallowedExtSet = new Set(disallowedExtList.map(val => String(val || '').toLowerCase()).filter(Boolean));
+
+    const pdfjsCfgRaw = (()=>{
+      const nested = (uploadConfig && typeof uploadConfig.pdfjs === 'object' && uploadConfig.pdfjs) ? uploadConfig.pdfjs : {};
+      return { ...nested };
+    })();
+    const pdfjsConfig = {
+      mainUrl: typeof pdfjsCfgRaw.main_url === 'string' ? pdfjsCfgRaw.main_url : (typeof pdfjsCfgRaw.main === 'string' ? pdfjsCfgRaw.main : ''),
+      workerUrl: typeof pdfjsCfgRaw.worker_url === 'string' ? pdfjsCfgRaw.worker_url : (typeof pdfjsCfgRaw.worker === 'string' ? pdfjsCfgRaw.worker : ''),
+      cdnMainUrl: typeof pdfjsCfgRaw.cdn_main_url === 'string' ? pdfjsCfgRaw.cdn_main_url : (typeof pdfjsCfgRaw.cdn_main === 'string' ? pdfjsCfgRaw.cdn_main : ''),
+      cdnWorkerUrl: typeof pdfjsCfgRaw.cdn_worker_url === 'string' ? pdfjsCfgRaw.cdn_worker_url : (typeof pdfjsCfgRaw.cdn_worker === 'string' ? pdfjsCfgRaw.cdn_worker : ''),
+    };
+    if (!pdfjsConfig.mainUrl && typeof uploadConfig.pdfjs_main_url === 'string'){ pdfjsConfig.mainUrl = uploadConfig.pdfjs_main_url; }
+    if (!pdfjsConfig.workerUrl && typeof uploadConfig.pdfjs_worker_url === 'string'){ pdfjsConfig.workerUrl = uploadConfig.pdfjs_worker_url; }
+    if (!pdfjsConfig.cdnMainUrl && typeof uploadConfig.pdfjs_cdn_main === 'string'){ pdfjsConfig.cdnMainUrl = uploadConfig.pdfjs_cdn_main; }
+    if (!pdfjsConfig.cdnWorkerUrl && typeof uploadConfig.pdfjs_cdn_worker === 'string'){ pdfjsConfig.cdnWorkerUrl = uploadConfig.pdfjs_cdn_worker; }
+    const scriptLoadCache = new Map();
+    const PDFJS_MAIN_FALLBACK = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.js';
+    const PDFJS_WORKER_FALLBACK = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.js';
+
+    function imageFromDataURL(dataURL){
+      return new Promise((resolve, reject)=>{
+        if (!dataURL || typeof dataURL !== 'string'){
+          reject(new Error('Brak danych obrazu.'));
+          return;
+        }
+        const img = new Image();
+        img.onload = ()=> resolve(img);
+        img.onerror = (err)=> reject(err || new Error('Nie udało się wczytać obrazu.'));
+        img.src = dataURL;
+      });
+    }
+
+    function sourcePixelWidth(src){
+      if (!src) return 0;
+      if (typeof src.naturalWidth === 'number' && src.naturalWidth > 0){ return src.naturalWidth; }
+      if (typeof src.videoWidth === 'number' && src.videoWidth > 0){ return src.videoWidth; }
+      if (typeof src.width === 'number' && src.width > 0){ return src.width; }
+      return 0;
+    }
+
+    function sourcePixelHeight(src){
+      if (!src) return 0;
+      if (typeof src.naturalHeight === 'number' && src.naturalHeight > 0){ return src.naturalHeight; }
+      if (typeof src.videoHeight === 'number' && src.videoHeight > 0){ return src.videoHeight; }
+      if (typeof src.height === 'number' && src.height > 0){ return src.height; }
+      return 0;
+    }
+    function loadScriptOnce(url){
+      if (!url || typeof url !== 'string'){ return Promise.reject(new Error('Brak adresu skryptu.')); }
+      const trimmed = url.trim();
+      if (!trimmed){ return Promise.reject(new Error('Pusty adres skryptu.')); }
+      if (scriptLoadCache.has(trimmed)){ return scriptLoadCache.get(trimmed); }
+      const scripts = Array.prototype.slice.call(document.getElementsByTagName('script') || []);
+      const norm = (src)=>{
+        if (!src || typeof src !== 'string'){ return ''; }
+        const qIndex = src.indexOf('?');
+        return qIndex >= 0 ? src.slice(0, qIndex) : src;
+      };
+      const trimmedNorm = norm(trimmed);
+      const existing = scripts.find(s => s && typeof s.src === 'string' && (s.src === trimmed || norm(s.src) === trimmedNorm));
+      if (existing){
+        const promise = new Promise((resolve, reject)=>{
+          const done = ()=> resolve(true);
+          if (existing.readyState === 'complete' || existing.dataset && existing.dataset.loaded === '1'){
+            done();
+          } else {
+            existing.addEventListener('load', ()=>{ existing.dataset.loaded = '1'; done(); }, { once:true });
+            existing.addEventListener('error', ()=> reject(new Error('Nie udało się załadować skryptu: '+ trimmed)), { once:true });
+          }
+        });
+        const tracked = promise.catch(err=>{ scriptLoadCache.delete(trimmed); throw err; });
+        scriptLoadCache.set(trimmed, tracked);
+        return tracked;
+      }
+      const promise = new Promise((resolve, reject)=>{
+        const script = document.createElement('script');
+        script.src = trimmed;
+        script.async = true;
+        script.onload = ()=>{ script.dataset.loaded = '1'; resolve(true); };
+        script.onerror = ()=>{
+          if (script.parentNode){ script.parentNode.removeChild(script); }
+          reject(new Error('Nie udało się załadować skryptu: ' + trimmed));
+        };
+        document.head.appendChild(script);
+      });
+      const tracked = promise.then(res=> res).catch(err=>{ scriptLoadCache.delete(trimmed); throw err; });
+      scriptLoadCache.set(trimmed, tracked);
+      return tracked;
+    }
+    let pdfjsEnsurePromise = null;
+    function pickPdfGlobal(){
+      if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function'){
+        return window.pdfjsLib;
+      }
+      const alt = window['pdfjs-dist/build/pdf'] || window.pdfjsDistBuildPdf;
+      if (alt && typeof alt.getDocument === 'function'){
+        window.pdfjsLib = alt;
+        return alt;
+      }
+      return null;
+    }
+
+    function guessWorkerUrl(src){
+      if (!src || typeof src !== 'string') return '';
+      const trimmed = src.trim();
+      if (!trimmed) return '';
+      const parts = trimmed.split('?');
+      const base = parts[0];
+      if (!base) return '';
+      if (base.endsWith('pdf.min.js')){
+        parts[0] = base.replace('pdf.min.js', 'pdf.worker.min.js');
+        return parts.join('?');
+      }
+      return '';
+    }
+
+    function resolveConfiguredWorkerSrc(preferredMain){
+      const candidates = [];
+      const push = (val)=>{
+        if (!val || typeof val !== 'string') return;
+        const trimmed = val.trim();
+        if (!trimmed) return;
+        if (!candidates.includes(trimmed)) candidates.push(trimmed);
+      };
+      push(pdfjsConfig && pdfjsConfig.workerUrl);
+      push(pdfjsConfig && pdfjsConfig.cdnWorkerUrl);
+      push(pdfjsConfig && pdfjsConfig.mainUrl ? guessWorkerUrl(pdfjsConfig.mainUrl) : '');
+      push(pdfjsConfig && pdfjsConfig.cdnMainUrl ? guessWorkerUrl(pdfjsConfig.cdnMainUrl) : '');
+      if (preferredMain){ push(guessWorkerUrl(preferredMain)); }
+      push(PDFJS_WORKER_FALLBACK);
+      return candidates.find(Boolean) || '';
+    }
+
+    function configurePdfWorker(lib, loadedMain){
+      if (!lib) return '';
+      const workerSrc = resolveConfiguredWorkerSrc(loadedMain);
+      if (lib.GlobalWorkerOptions){
+        if (workerSrc){
+          try { lib.GlobalWorkerOptions.workerSrc = workerSrc; } catch(err){ console.warn(err); }
+          if (typeof lib.disableWorker !== 'undefined'){ lib.disableWorker = false; }
+        } else if (typeof lib.disableWorker !== 'undefined'){
+          lib.disableWorker = true;
+        }
+      } else if (workerSrc){
+        lib.workerSrc = workerSrc;
+      }
+      return workerSrc;
+    }
+
+    async function ensurePdfJs(){
+      const existing = pickPdfGlobal();
+      if (existing){
+        configurePdfWorker(existing);
+        return existing;
+      }
+      if (!pdfjsEnsurePromise){
+        pdfjsEnsurePromise = (async()=>{
+          const sources = [];
+          const push = (val)=>{
+            if (!val || typeof val !== 'string') return;
+            const trimmed = val.trim();
+            if (!trimmed) return;
+            if (!sources.includes(trimmed)) sources.push(trimmed);
+          };
+          push(pdfjsConfig && pdfjsConfig.mainUrl);
+          push(pdfjsConfig && pdfjsConfig.cdnMainUrl);
+          push(PDFJS_MAIN_FALLBACK);
+          let lastError = null;
+          for (const src of sources){
+            try{
+              await loadScriptOnce(src);
+            }catch(err){
+              lastError = err;
+              continue;
+            }
+            const lib = pickPdfGlobal();
+            if (lib && typeof lib.getDocument === 'function'){
+              configurePdfWorker(lib, src);
+              return lib;
+            }
+          }
+          const lib = pickPdfGlobal();
+          if (lib && typeof lib.getDocument === 'function'){
+            configurePdfWorker(lib);
+            return lib;
+          }
+          if (lastError){ throw lastError; }
+          throw new Error('Nie udało się załadować PDF.js');
+        })().catch(err=>{ pdfjsEnsurePromise = null; console.error('ensurePdfJs error:', err); throw err; });
+      }
+      return pdfjsEnsurePromise;
+    }
+    if (!disallowedExtSet.size){
+      ['svg','svgz','zip','rar','7z','php','phtml','phar','js','cgi','pl','asp','aspx'].forEach(ext => disallowedExtSet.add(ext));
+    }
 
     const PDFLib = window.PDFLib || null;         // eksport PDF
     const QRCodeLib = window.QRCode || null;      // davidshimjs
+
+    const pdfSummaryLabel = (meta)=>{
+      if (!meta || typeof meta !== 'object'){ return ''; }
+      const pages = Number.isFinite(meta.numPages) && meta.numPages > 0 ? Math.round(meta.numPages) : 0;
+      return pages > 0 ? `PDF • ${pages} str.` : 'PDF';
+    };
 
     /* ===== Shortcuts ===== */
     const $  = (sel, root=document) => root.querySelector(sel);
@@ -235,6 +461,14 @@
     const materialEl = byId('stb-material');
     const materialGridEl = byId('stb-material-grid');
     const laminateEl = byId('stb-laminate');
+    const finishEl = byId('stb-finish');
+    const extraMaterialSel = byId('stb-extra-material');
+    const extraMaterialGridEl = byId('stb-extra-material-grid');
+    const extraLaminateEl = byId('stb-extra-laminate');
+    const expressEl = byId('stb-extra-express');
+    const extraShapeSel = byId('stb-extra-shape');
+    const extraFinishSel = byId('stb-extra-finish');
+    const extraSummaryWrap = byId('stb-extra-summary');
 
     // Rozmiary / ilość / cena
     const sizeList = byId('sizeList');
@@ -248,20 +482,158 @@
     const qtyCustom = byId('qtyCustom');
     const qtyEl  = byId('stb-qty');
     const qtyCustomSave = byId('qtyCustomSave');
+    const modalQtySelect = byId('stb-modal-qty-select');
+    const modalQtyInput = byId('stb-modal-qty-input');
+    let lastPresetQty = 0;
 
     const totalOutEls     = $$('[data-stb-total]');
     const totalNetOutEls  = $$('[data-stb-total-net]');
+    const totalVatOutEls  = $$('[data-stb-total-vat]');
+    const totalUnitOutEls = $$('[data-stb-total-unit]');
     const totalSaveOutEls = $$('[data-stb-total-save]');
-    const totalLeadOutEls = $$('[data-stb-total-lead]');
-    const priceTimerEls   = $$('[data-stb-price-timer]');
     const addBtn      = byId('stb-add');
 
     const step1       = byId('stb-step-1');
     const step2       = byId('stb-step-2');
+    const step3       = byId('stb-step-3');
     const step1Next   = byId('stb-step1-next');
     const step2Back   = byId('stb-step2-back');
+    const step2Next   = byId('stb-step2-next');
+    const step3Back   = byId('stb-step3-back');
     const uploadTrigger = byId('stb-upload-trigger');
     const uploadSummary = byId('stb-upload-summary');
+
+    const uploadLockEls = [imgEl, upBtn, delBtn, addBtn, step3Back].filter(Boolean);
+    let activeUploadXhr = null;
+
+    function setUploadBusy(busy){
+      uploadLockEls.forEach(el => {
+        if (!el) return;
+        if ('disabled' in el){
+          if (busy){
+            el.dataset.stbWasDisabled = el.disabled ? '1' : '0';
+            el.disabled = true;
+          } else {
+            if (el.dataset.stbWasDisabled === '1'){
+              el.disabled = true;
+            } else {
+              el.disabled = false;
+            }
+            delete el.dataset.stbWasDisabled;
+          }
+        }
+        if (el.classList){
+          if (busy){ el.classList.add('is-loading'); } else { el.classList.remove('is-loading'); }
+        }
+      });
+      if (uploadTrigger){
+        if (busy){
+          uploadTrigger.classList.add('is-disabled');
+          uploadTrigger.setAttribute('aria-disabled', 'true');
+        } else {
+          uploadTrigger.classList.remove('is-disabled');
+          uploadTrigger.removeAttribute('aria-disabled');
+        }
+      }
+    }
+
+    function abortActiveUpload(options={}){
+      if (activeUploadXhr){
+        if (options.silent){ activeUploadXhr.__stbSilentAbort = true; }
+        try { activeUploadXhr.abort(); } catch(err){}
+      }
+    }
+
+    function uploadMessage(msg){
+      if (!uploadSummary) return;
+      if (typeof msg === 'string'){ uploadSummary.textContent = msg; }
+    }
+
+    function uploadFileToServer(file){
+      if (!uploadConfig || !uploadConfig.ajax_url){
+        uploadMessage('Brak konfiguracji przesyłania plików.');
+        return Promise.resolve(null);
+      }
+
+      abortActiveUpload({ silent:true });
+
+      return new Promise((resolve)=>{
+        const xhr = new XMLHttpRequest();
+        activeUploadXhr = xhr;
+        xhr.open('POST', String(uploadConfig.ajax_url), true);
+        xhr.responseType = 'json';
+        xhr.timeout = 5 * 60 * 1000; // 5 minut
+
+        const finalize = (result) => {
+          if (activeUploadXhr === xhr){ activeUploadXhr = null; }
+          setUploadBusy(false);
+          resolve(result);
+        };
+
+        xhr.upload.onprogress = (ev)=>{
+          if (!uploadSummary) return;
+          if (ev && ev.lengthComputable){
+            const pct = Math.round((ev.loaded / Math.max(1, ev.total)) * 100);
+            uploadSummary.textContent = `Wysyłanie pliku… ${pct}%`;
+          } else {
+            uploadSummary.textContent = 'Wysyłanie pliku…';
+          }
+        };
+
+        const handleError = (message, silent=false)=>{
+          if (!silent){
+            uploadMessage(message || 'Nie udało się przesłać pliku.');
+          }
+          finalize(null);
+        };
+
+        xhr.onload = ()=>{
+          let response = xhr.response;
+          if (!response && xhr.responseText){
+            try { response = JSON.parse(xhr.responseText); } catch(err){}
+          }
+
+          if (xhr.status >= 200 && xhr.status < 300 && response && response.success && response.data){
+            const data = response.data || {};
+            finalize({
+              uploadId: Number.isFinite(Number(data.id)) ? Number(data.id) : 0,
+              url: typeof data.url === 'string' ? data.url : '',
+              size: Number.isFinite(Number(data.size)) ? Number(data.size) : (file?.size || 0),
+              type: typeof data.type === 'string' ? data.type : (file?.type || ''),
+              name: typeof data.name === 'string' ? data.name : (file?.name || ''),
+            });
+            return;
+          }
+
+          const silent = !!xhr.__stbSilentAbort;
+          const message = response?.data?.message || response?.message || (xhr.status === 413 ? 'Plik jest zbyt duży.' : null);
+          handleError(message || 'Nie udało się przesłać pliku.', silent);
+        };
+
+        xhr.onerror = ()=>{
+          const silent = !!xhr.__stbSilentAbort;
+          handleError('Błąd połączenia podczas przesyłania pliku.', silent);
+        };
+
+        xhr.onabort = ()=>{
+          const silent = !!xhr.__stbSilentAbort;
+          handleError(silent ? '' : 'Przesyłanie pliku przerwane.', silent);
+        };
+
+        xhr.ontimeout = ()=>{
+          handleError('Limit czasu przesyłania pliku został przekroczony.');
+        };
+
+        const formData = new FormData();
+        formData.append('action', 'stb_upload_file');
+        if (uploadConfig.nonce){ formData.append('nonce', uploadConfig.nonce); }
+        formData.append('stb_file', file, file?.name || 'upload');
+
+        setUploadBusy(true);
+        uploadMessage('Rozpoczynam przesyłanie pliku…');
+        xhr.send(formData);
+      });
+    }
 
     const hasSvgElement = typeof SVGElement !== 'undefined';
 
@@ -333,6 +705,150 @@
     function showPdfProgress(show){ ensurePdfProgressUI(); if (pdfProgWrap) pdfProgWrap.style.display = show ? 'inline-flex' : 'none'; }
     function setPdfProgress(p){ ensurePdfProgressUI(); const v = Math.max(0, Math.min(100, Math.round(p))); if (pdfProgBar) pdfProgBar.style.width = v + '%'; if (pdfProgPct) pdfProgPct.textContent = v + '%'; }
 
+    async function renderPdfPreviewFromFile(file, { onProgress } = {}){
+      if (!file){ throw new Error('Brak pliku PDF.'); }
+      const progress = typeof onProgress === 'function' ? onProgress : ()=>{};
+      progress(5);
+      const pdfjsLib = await ensurePdfJs();
+      if (!pdfjsLib || typeof pdfjsLib.getDocument !== 'function'){
+        throw new Error('Nie udało się zainicjować PDF.js.');
+      }
+      progress(12);
+      const buffer = await file.arrayBuffer();
+      progress(20);
+
+      const attemptLoading = async(disableWorkers)=>{
+        if (disableWorkers && pdfjsLib){
+          try {
+            if (pdfjsLib.GlobalWorkerOptions){ pdfjsLib.GlobalWorkerOptions.workerSrc = ''; }
+            if (typeof pdfjsLib.disableWorker !== 'undefined'){ pdfjsLib.disableWorker = true; }
+          } catch(err){ console.warn('Nie udało się wyłączyć workera PDF.js', err); }
+        }
+
+        const loadingTask = pdfjsLib.getDocument({ data: buffer });
+        if (loadingTask){
+          const progressHandler = (evt)=>{
+            if (!evt || !evt.total) return;
+            const ratio = Math.max(0, Math.min(1, evt.loaded / evt.total));
+            progress(20 + Math.round(ratio * 40));
+          };
+          try {
+            if ('onProgress' in loadingTask){
+              loadingTask.onProgress = progressHandler;
+            } else if (typeof loadingTask.onProgress === 'function'){
+              const prev = loadingTask.onProgress.bind(loadingTask);
+              loadingTask.onProgress = (evt)=>{
+                progressHandler(evt);
+                try { prev(evt); } catch(err){ console.warn('PDF.js progress hook error:', err); }
+              };
+            }
+          } catch(err){
+            console.warn('Nie udało się ustawić obserwatora progresu PDF.js', err);
+          }
+        }
+
+        try {
+          const pdf = await loadingTask.promise;
+          return { pdf, loadingTask };
+        } catch(err){
+          if (typeof loadingTask?.destroy === 'function'){
+            try { await loadingTask.destroy(); } catch(destroyErr){ console.warn('PDF destroy error', destroyErr); }
+          }
+          throw err;
+        }
+      };
+
+      let pdf = null;
+      let loadingTask = null;
+      let workerDisabled = !!(pdfjsLib && pdfjsLib.disableWorker);
+      let lastError = null;
+
+      for (let attempt = 0; attempt < 2; attempt++){
+        const disableWorkers = (attempt === 1);
+        if (disableWorkers){ workerDisabled = true; }
+        try {
+          const result = await attemptLoading(disableWorkers);
+          pdf = result.pdf;
+          loadingTask = result.loadingTask;
+          break;
+        } catch(err){
+          lastError = err;
+          const message = String(err && err.message ? err.message : err || '');
+          const workerHint = /worker/i.test(message) || /Module instantiation/i.test(message);
+          if (attempt === 0){
+            console.warn('PDF.js worker attempt nieudany, próbuję bez workera.', err);
+            if (!workerHint){
+              // Jeśli błąd nie sugeruje problemu z workerem, nadal spróbuj bez workera.
+            }
+            continue;
+          }
+        }
+      }
+
+      if (!pdf){
+        throw lastError || new Error('Nie udało się wczytać PDF.');
+      }
+
+      const totalPages = Number.isFinite(pdf.numPages) && pdf.numPages > 0 ? Math.round(pdf.numPages) : 1;
+      progress(65);
+      const page = await pdf.getPage(1);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const maxDim = 2048;
+      const scale = (()=>{
+        const maxSide = Math.max(baseViewport.width, baseViewport.height);
+        if (!maxSide || !Number.isFinite(maxSide)) return 1.5;
+        const target = maxDim / maxSide;
+        const clamped = Math.max(1, Math.min(3, target));
+        return clamped;
+      })();
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(viewport.width));
+      canvas.height = Math.max(1, Math.round(viewport.height));
+      const ctx2d = canvas.getContext('2d', { willReadFrequently:false });
+      await page.render({ canvasContext: ctx2d, viewport }).promise;
+      progress(88);
+      try{ if (typeof page.cleanup === 'function'){ page.cleanup(); } }catch(_err){}
+      try{ if (typeof pdf.cleanup === 'function'){ pdf.cleanup(); } }catch(_err){}
+      let dataURL = '';
+      try{
+        dataURL = canvas.toDataURL('image/png');
+      }catch(err){
+        console.warn('PDF canvas toDataURL failed:', err);
+        dataURL = '';
+      }
+      let previewImage = null;
+      if (dataURL){
+        try {
+          previewImage = await imageFromDataURL(dataURL);
+        } catch(err){
+          console.warn('PDF preview image decode failed:', err);
+        }
+      }
+      if (!previewImage){
+        try {
+          const fallbackUrl = dataURL && dataURL.length ? dataURL : canvas.toDataURL('image/png');
+          previewImage = await imageFromDataURL(fallbackUrl);
+          if (!dataURL) dataURL = fallbackUrl;
+        } catch(err){
+          previewImage = null;
+        }
+      }
+      if (!previewImage){
+        throw new Error('Nie udało się przygotować podglądu PDF.');
+      }
+      progress(100);
+      return {
+        previewImage,
+        previewDataURL: dataURL || null,
+        widthPx: canvas.width,
+        heightPx: canvas.height,
+        pageCount: totalPages,
+        note: totalPages > 1 ? `Strona 1 z ${totalPages}` : '',
+        workerDisabled: workerDisabled
+      };
+    }
+
     // Mini summary
     const sumDims = byId('sum-dims');
     const sumQty  = byId('sum-qty');
@@ -348,24 +864,21 @@
     // Rozszerzone podsumowanie
     const sumShapeEl    = byId('sum-shape');
     const sumMaterialEl = byId('sum-material');
+    const sumFinishEl   = byId('sum-finish');
     const sumLaminateEl = byId('sum-laminate');
+    const sumExpressEl  = byId('sum-express');
     const sumLeadtimeEl = byId('sum-leadtime');
 
-    const PRICE_TIMER_DURATION = 15 * 60 * 1000; // 15 minut
-    let priceTimerDeadline = null;
-    let priceTimerInterval = null;
+    const EXPRESS_MULTIPLIER = 1.15;
 
     /* ===== Kroki ===== */
-    const steps = [step1, step2];
-    let currentStep = step1 ? 1 : 0;
+    const steps = [step1, step2, step3].filter(Boolean);
+    let currentStep = steps.length ? 1 : 0;
 
     function showStep(stepNumber){
       if (!steps.length) return;
-      let targetStep = stepNumber;
-      if (!steps[stepNumber - 1]){
-        const fallbackIndex = steps.findIndex(Boolean);
-        targetStep = fallbackIndex >= 0 ? (fallbackIndex + 1) : stepNumber;
-      }
+      const max = steps.length;
+      const targetStep = Math.min(Math.max(stepNumber, 1), max);
       currentStep = targetStep;
       steps.forEach((step, idx) => {
         if (!step) return;
@@ -402,6 +915,27 @@
       });
     }
 
+    if (step2Next && step3){
+      step2Next.addEventListener('click', ()=>{
+        updatePriceAndJSON();
+        showStep(3);
+        if (typeof step3.scrollIntoView === 'function'){
+          step3.scrollIntoView({ behavior:'smooth', block:'start' });
+        }
+        window.requestAnimationFrame(()=> focusFirstInteractive(step3));
+      });
+    }
+
+    if (step3Back && step2){
+      step3Back.addEventListener('click', ()=>{
+        showStep(2);
+        if (typeof step2.scrollIntoView === 'function'){
+          step2.scrollIntoView({ behavior:'smooth', block:'start' });
+        }
+        window.requestAnimationFrame(()=> focusFirstInteractive(step2));
+      });
+    }
+
     if (uploadTrigger && upBtn){
       uploadTrigger.addEventListener('click', (ev)=>{
         ev.preventDefault();
@@ -410,10 +944,6 @@
     }
 
     showStep(currentStep || 1);
-
-    if (priceTimerEls.length){
-      window.addEventListener('beforeunload', stopPriceTimer, { once:true });
-    }
 
     // Tekst
     const textInput     = byId('stb-text-input');
@@ -445,13 +975,35 @@
 
     /* ===== Stan ===== */
     const parseNum = (elOrVal, def) => { const v=(typeof elOrVal==='number')?elOrVal:parseFloat(elOrVal?.value); return (isFinite(v)&&v>0)?v:def; };
-    let uploaded = { name:null, type:null, size:0, dataURL:null, img:null, pdf:null };
+    let uploaded = { name:null, type:null, size:0, dataURL:null, img:null, pdf:null, uploadId:null, url:null, uploadBytes:0 };
     let transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 }; // GRAFIKA
     let cornerFactor = 0.04; // 4%
     let gridOn = false;
 
     // shapes: rect|circle|ellipse|triangle|octagon|diecut
     let shape='rect', ellipseRatio=1.0;
+    const defaultShapeValue = shape;
+    const defaultLaminateValue = !!(laminateEl && laminateEl.checked);
+    const defaultExpressValue = !!(expressEl && expressEl.checked);
+    let defaultMaterialValue = materialEl ? (materialEl.value || '') : '';
+    const currentFinishValue = ()=>{
+      if (finishEl && typeof finishEl.value === 'string' && finishEl.value !== ''){ return finishEl.value; }
+      if (extraFinishSel && typeof extraFinishSel.value === 'string' && extraFinishSel.value !== ''){ return extraFinishSel.value; }
+      return 'gloss';
+    };
+    const finishLabel = (value)=>{
+      const val = (typeof value === 'string' && value) ? value : currentFinishValue();
+      const source = finishEl || extraFinishSel;
+      if (source && source.options){
+        const opts = Array.from(source.options);
+        const match = opts.find(opt => opt && opt.value === val);
+        if (match && typeof match.textContent === 'string'){ return match.textContent.trim(); }
+      }
+      if (val === 'mat') return 'Mat';
+      if (val === 'gloss') return 'Połysk';
+      return val || '—';
+    };
+    const defaultFinishValue = currentFinishValue();
 
     const defaultTextObj = ()=>({
       text:'',
@@ -825,7 +1377,7 @@
       if (contrast > 1.6) return false;
       return colorDistance(o,bg) < 80;
     };
-    const shapeLabel = (s)=>({ rect:'Prostokąt', circle:'Koło', ellipse:'Elipsa', triangle:'Trójkąt', octagon:'Ośmiokąt', diecut:'DIECUT' }[s] || '—');
+    const shapeLabel = (s)=>({ rect:'Prostokąt', circle:'Koło', ellipse:'Elipsa', triangle:'Trójkąt', octagon:'Ośmiokąt', diecut:'Dowolny kształt (DIECUT)' }[s] || '—');
 
     /* ===== Geometria ===== */
     function polygonPath(c, points, radius){
@@ -1117,7 +1669,7 @@
 
     // oblicza bezpieczną skalę/offset pod obrys
     function diecutSafePlacement(rect, img, userScale, rotDeg, ringPx, padPx){
-      const iw = img.width, ih = img.height;
+      const iw = sourcePixelWidth(img), ih = sourcePixelHeight(img);
       const base = Math.max(rect.w/iw, rect.h/ih);
       const theta = (rotDeg||0) * Math.PI/180;
       const cos = Math.abs(Math.cos(theta)), sin = Math.abs(Math.sin(theta));
@@ -1221,7 +1773,7 @@
         const offX = fit.clampOffsetX(transform.offsetX||0);
         const offY = fit.clampOffsetY(transform.offsetY||0);
 
-        const iw = uploaded.img.width, ih = uploaded.img.height;
+        const iw = sourcePixelWidth(uploaded.img), ih = sourcePixelHeight(uploaded.img);
         const base = Math.max(r.w/iw, r.h/ih);
         const dw = Math.max(1, Math.round(iw * base * effScale));
         const dh = Math.max(1, Math.round(ih * base * effScale));
@@ -1316,7 +1868,7 @@
       } else if (uploaded.img){
         ctx.save();
         ctx.beginPath(); const path=shapePath(); path(); ctx.closePath(); ctx.clip();
-        const iw=uploaded.img.width, ih=uploaded.img.height;
+        const iw=sourcePixelWidth(uploaded.img), ih=sourcePixelHeight(uploaded.img);
         const base=Math.max(r.w/iw, r.h/ih), scale=base*(transform.scale||1);
         const dw=iw*scale, dh=ih*scale, cx=r.x+r.w/2, cy=r.y+r.h/2;
         ctx.translate(cx + (transform.offsetX||0), cy + (transform.offsetY||0));
@@ -1374,8 +1926,9 @@
       }
 
       if (delBtn){
-        delBtn.disabled = !uploaded.img;
-        delBtn.style.opacity = uploaded.img ? '1' : '.6';
+        const hasUploadAsset = !!(uploaded.img || uploaded.uploadId || uploaded.url);
+        delBtn.disabled = !hasUploadAsset;
+        delBtn.style.opacity = hasUploadAsset ? '1' : '.6';
       }
 
       updateTextSizeUI();
@@ -1425,8 +1978,8 @@
       const outlineOn = !!outOnEl?.checked;
       const outlineMM = Math.max(0, parseFloat(outMMEl?.value)||0);
       const outlinePx = outlineOn ? (pxPerCm(r) * (outlineMM/10)) : 0;
-      const iw = uploaded.img.width;
-      const ih = uploaded.img.height;
+      const iw = sourcePixelWidth(uploaded.img);
+      const ih = sourcePixelHeight(uploaded.img);
       if (!iw || !ih) return null;
       let scale = 1;
       let offX = transform.offsetX || 0;
@@ -1446,6 +1999,21 @@
       const cy = r.y + r.h/2 + offY;
       const rot = (transform.rotDeg || 0) * Math.PI/180;
       return { cx, cy, w: dw, h: dh, rot };
+    }
+
+    function initialImageScale(img){
+      if (!img) return 1;
+      const iw = sourcePixelWidth(img);
+      const ih = sourcePixelHeight(img);
+      if (!iw || !ih) return 1;
+      const rect = getDrawRect();
+      if (!rect || !rect.w || !rect.h) return 1;
+      const cover = Math.max(rect.w/iw, rect.h/ih);
+      const contain = Math.min(rect.w/iw, rect.h/ih);
+      if (!Number.isFinite(cover) || cover <= 0) return 1;
+      const scale = contain / cover;
+      if (!Number.isFinite(scale) || scale <= 0) return 1;
+      return Math.min(1, Math.max(scale, 0.05));
     }
     function qrBoundingBox(){
       if (!qrObj.enabled || !qrObj.canvas) return null;
@@ -1692,15 +2260,24 @@
       if (!fMeta) return;
       fMeta.textContent = prettyMeta(pxW, pxH, mime, sizeBytes, extra);
     }
-    function clearImage(){
-      uploaded={ name:null, type:null, size:0, dataURL:null, img:null, pdf:null };
+    function clearImage(arg){
+      const isEvent = arg && typeof arg === 'object' && typeof arg.preventDefault === 'function';
+      if (isEvent){ try { arg.preventDefault(); } catch(err){} }
+      const options = (!isEvent && arg && typeof arg === 'object') ? arg : {};
+      const keepSummary = !!options.keepSummary;
+
+      abortActiveUpload({ silent:true });
+      setUploadBusy(false);
+
+      uploaded = { name:null, type:null, size:0, dataURL:null, img:null, pdf:null, uploadId:null, url:null, uploadBytes:0 };
       if (imgEl) imgEl.value='';
       if (fName) fName.textContent='brak pliku';
-      if (uploadSummary) uploadSummary.textContent='Brak pliku';
+      if (uploadSummary && !keepSummary) uploadSummary.textContent='Brak pliku';
       if (fMeta) fMeta.textContent='';
       transform={scale:1,offsetX:0,offsetY:0,rotDeg:0};
       if (lastToolTarget === 'image') setToolTarget(null);
       requestDraw();
+      updatePriceAndJSON();
     }
     if (upBtn){
       upBtn.addEventListener('click', ()=> imgEl && imgEl.click());
@@ -1712,8 +2289,41 @@
       const f = e.target.files && e.target.files[0];
       if (!f){ clearImage(); return; }
       const name = f.name || '';
-      if (fName) fName.textContent = name;
-      if (uploadSummary) uploadSummary.textContent = name;
+      if (fName) fName.textContent = name || 'brak pliku';
+
+      const lowerName = (name || '').toLowerCase();
+      const ext = lowerName.includes('.') ? lowerName.split('.').pop() : '';
+      const typeLower = (f.type || '').toLowerCase();
+
+      const hitsDisallowed = (()=>{
+        if (ext && disallowedExtSet.has(ext)) return true;
+        const mimeTokens = typeLower
+          ? typeLower.split(/[^a-z0-9]+/).filter(Boolean)
+          : [];
+        for (const bad of disallowedExtSet){
+          if (!bad) continue;
+          if (mimeTokens.includes(bad)) return true;
+          if (lowerName.endsWith('.' + bad)) return true;
+        }
+        return false;
+      })();
+      if (hitsDisallowed){
+        clearImage({ keepSummary:true });
+        if (uploadSummary){
+          uploadSummary.textContent = 'Ten typ pliku jest zablokowany. Dozwolone formaty: JPG, PNG lub PDF.';
+        }
+        return;
+      }
+
+      const allowedByExt = ext && allowedExtSet.has(ext);
+      const allowedByMime = typeLower && allowedMimeSet.has(typeLower);
+      if (!allowedByExt && !allowedByMime){
+        clearImage({ keepSummary:true });
+        if (uploadSummary){
+          uploadSummary.textContent = 'Nieobsługiwany format pliku. Wgraj JPG, PNG lub PDF.';
+        }
+        return;
+      }
 
       // jeśli diecut — tylko PNG z przezroczystością
       if (shape==='diecut'){
@@ -1725,58 +2335,122 @@
         }
       }
 
-      // PDF preview via PDF.js (first page)
-      const isPDF = (f.type && f.type.toLowerCase().includes('pdf')) || /\.pdf$/i.test(name);
-      if (isPDF){
-        if (shape==='diecut'){
-          alert('Tryb DIECUT wspiera tylko PNG z przezroczystością.');
-          clearImage(); return;
-        }
-        if (!window.pdfjsLib || typeof window.pdfjsLib.getDocument!=='function'){
-          alert('Podgląd PDF wymaga PDF.js (brak biblioteki).');
-          clearImage(); return;
-        }
-        try{
-          const buf = await f.arrayBuffer();
-          const pdfTask = window.pdfjsLib.getDocument({ data: new Uint8Array(buf) });
-          const pdf = await pdfTask.promise;
-          const page = await pdf.getPage(1);
-          const viewport = page.getViewport({ scale: 2 });
-          const c = document.createElement('canvas');
-          const cctx = c.getContext('2d');
-          c.width  = Math.max(1, Math.ceil(viewport.width));
-          c.height = Math.max(1, Math.ceil(viewport.height));
-          await page.render({ canvasContext: cctx, viewport }).promise;
-
-          const dataURL = c.toDataURL('image/png');
-          const img = new Image();
-          img.onload = ()=>{
-            uploaded = { name, type:(f.type||'application/pdf'), size:(f.size||0), dataURL, img, pdf:{ numPages: pdf.numPages||1 } };
-            transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
-            updateFileMeta(c.width, c.height, (f.type||'application/pdf'), (f.size||0), `PDF • ${pdf.numPages||1} str.`);
-            setToolTarget('image');
-            requestDraw();
-          };
-          img.src = dataURL;
-        }catch(err){
-          console.error('PDF preview error:', err);
-          alert('Nie udało się wczytać PDF (szczegóły w konsoli).');
-          clearImage();
+      const limitBytes = (Number.isFinite(MAX_UPLOAD_BYTES) && MAX_UPLOAD_BYTES > 0) ? MAX_UPLOAD_BYTES : null;
+      if (limitBytes && Number.isFinite(f.size) && f.size > limitBytes){
+        clearImage({ keepSummary:true });
+        if (uploadSummary){
+          const limitLabel = prettyBytes(limitBytes);
+          const sizeLabel = prettyBytes(f.size || 0);
+          uploadSummary.innerHTML = `Plik ma ${sizeLabel} i przekracza limit ${limitLabel}.<br>Większe pliki prześlij proszę przez <a href="https://wetransfer.com/" target="_blank" rel="noopener">WeTransfer</a> i dołącz link w uwagach do zamówienia.`;
         }
         return;
       }
 
-      // Image / SVG / PNG
+      const isPDF = (f.type && f.type.toLowerCase().includes('pdf')) || /\.pdf$/i.test(name);
+      if (isPDF && shape==='diecut'){
+        alert('Tryb DIECUT wspiera tylko PNG z przezroczystością.');
+        clearImage();
+        return;
+      }
+
+      const uploadInfo = await uploadFileToServer(f);
+      if (!uploadInfo){
+        clearImage({ keepSummary:true });
+        return;
+      }
+
+      const uploadedSize = uploadInfo.size || f.size || 0;
+      const uploadedType = uploadInfo.type || f.type || '';
+      const uploadedUrl  = uploadInfo.url || '';
+      const uploadedId   = uploadInfo.uploadId || 0;
+      const serverName   = (uploadInfo && uploadInfo.name) ? String(uploadInfo.name) : '';
+      const finalName    = serverName || name || '';
+
+      if (uploadSummary){
+        const label = finalName || 'Plik';
+        uploadSummary.textContent = `${label} • ${prettyBytes(uploadedSize)}`;
+      }
+
+      if (fName) fName.textContent = finalName || 'brak pliku';
+
+      const finalizePdfUpload = ({ previewImage, previewDataURL, pxW, pxH, pageCount, workerDisabled, note })=>{
+        if (!previewImage){ throw new Error('Brak obrazu podglądu PDF.'); }
+        const widthPx = Math.max(1, Math.round(pxW || sourcePixelWidth(previewImage)));
+        const heightPx = Math.max(1, Math.round(pxH || sourcePixelHeight(previewImage)));
+        const resolvedPages = Number.isFinite(pageCount) && pageCount > 0 ? Math.round(pageCount) : 1;
+        const pdfMeta = {
+          workerDisabled: !!workerDisabled,
+        };
+        if (resolvedPages > 0){ pdfMeta.numPages = resolvedPages; }
+        uploaded = {
+          name: finalName,
+          type:(uploadedType || 'application/pdf'),
+          size:uploadedSize,
+          dataURL: previewDataURL || null,
+          img: previewImage,
+          pdf: pdfMeta,
+          uploadId:uploadedId,
+          url:uploadedUrl,
+          uploadBytes:uploadedSize
+        };
+        if (fName) fName.textContent = finalName || 'brak pliku';
+        const initScale = initialImageScale(uploaded.img);
+        transform = { scale:initScale, offsetX:0, offsetY:0, rotDeg:0 };
+        const label = note || pdfSummaryLabel(uploaded.pdf);
+        updateFileMeta(widthPx, heightPx, (uploadedType || 'application/pdf'), uploadedSize, label);
+        setToolTarget('image');
+        requestDraw();
+        updatePriceAndJSON();
+      };
+
+      if (isPDF){
+        showPdfProgress(true);
+        setPdfProgress(4);
+        try{
+          const rendered = await renderPdfPreviewFromFile(f, { onProgress: setPdfProgress });
+          finalizePdfUpload({
+            previewImage: rendered.previewImage,
+            previewDataURL: rendered.previewDataURL,
+            pxW: rendered.widthPx,
+            pxH: rendered.heightPx,
+            pageCount: rendered.pageCount,
+            workerDisabled: rendered.workerDisabled,
+            note: rendered.note,
+          });
+        }catch(err){
+          console.error('PDF preview error:', err);
+          uploadMessage('Nie udało się przygotować podglądu PDF. Sprawdź plik lub prześlij go jako PNG.');
+          clearImage({ keepSummary:true });
+        }finally{
+          showPdfProgress(false);
+          setPdfProgress(0);
+        }
+        return;
+      }
+
       const rd = new FileReader();
       rd.onload = (ev)=>{
         const dataURL = String(ev.target.result);
         const img = new Image();
         img.onload = ()=>{
-          uploaded = { name, type:(f.type||''), size:(f.size||0), dataURL, img, pdf:null };
-          transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
-          updateFileMeta(img.naturalWidth||img.width, img.naturalHeight||img.height, (f.type||''), (f.size||0));
+          uploaded = {
+            name: finalName,
+            type:(uploadedType || ''),
+            size:uploadedSize,
+            dataURL,
+            img,
+            pdf:null,
+            uploadId:uploadedId,
+            url:uploadedUrl,
+            uploadBytes:uploadedSize
+          };
+          if (fName) fName.textContent = finalName || 'brak pliku';
+          const initScale = initialImageScale(img);
+          transform = { scale:initScale, offsetX:0, offsetY:0, rotDeg:0 };
+          updateFileMeta(sourcePixelWidth(img), sourcePixelHeight(img), (uploadedType || ''), uploadedSize);
           setToolTarget('image');
           requestDraw();
+          updatePriceAndJSON();
         };
         img.src = dataURL;
       };
@@ -1802,6 +2476,27 @@
     }
 
     function updateShapeUI(){
+      if (shapeGrid){
+        $$('.shape-btn', shapeGrid).forEach(btn => {
+          const val = btn.getAttribute('data-shape') || 'rect';
+          const isActive = val === shape;
+          btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
+      }
+      if (extraShapeSel){
+        const options = Array.from(extraShapeSel.options || []);
+        const hasOption = options.some(opt => opt.value === shape);
+        if (!hasOption && shape){
+          const opt = document.createElement('option');
+          opt.value = shape;
+          opt.textContent = shapeLabel(shape);
+          extraShapeSel.appendChild(opt);
+        }
+        if (extraShapeSel.value !== shape){
+          extraShapeSel.value = shape;
+        }
+      }
+
       const dis = (shape==='ellipse' || shape==='circle' || shape==='diecut');
       if (cornerEl) cornerEl.disabled = dis;
       if (ellipseRow) ellipseRow.style.display = (shape==='ellipse') ? '' : 'none';
@@ -1820,9 +2515,15 @@
     if (shapeGrid){
       shapeGrid.addEventListener('click', (e)=>{
         const btn = e.target.closest('.shape-btn'); if(!btn) return;
-        $$('.shape-btn', shapeGrid).forEach(b=>b.setAttribute('aria-pressed','false'));
-        btn.setAttribute('aria-pressed','true');
         shape = btn.getAttribute('data-shape') || 'rect';
+        updateShapeUI();
+      });
+    }
+    if (extraShapeSel){
+      extraShapeSel.addEventListener('change', ()=>{
+        markExtraUsed();
+        const next = extraShapeSel.value || 'rect';
+        shape = next;
         updateShapeUI();
       });
     }
@@ -1900,21 +2601,52 @@
       }
     }
 
+    if (materialEl && !defaultMaterialValue){
+      defaultMaterialValue = materialEl.value || '';
+    }
+
     const materialTiles = [];
+    const syncQuickMaterial = (value) => {
+      if (!extraMaterialSel) return;
+      const target = value || '';
+      if (extraMaterialSel.value === target) return;
+      let hasOption = false;
+      const options = Array.from(extraMaterialSel.options || []);
+      for (const opt of options){
+        if (opt.value === target){ hasOption = true; break; }
+      }
+      if (!hasOption && target){
+        const optEl = document.createElement('option');
+        optEl.value = target;
+        optEl.textContent = target;
+        extraMaterialSel.appendChild(optEl);
+        hasOption = true;
+      }
+      if (hasOption){
+        extraMaterialSel.value = target;
+      } else if (extraMaterialSel.options.length){
+        extraMaterialSel.value = extraMaterialSel.options[0].value;
+      }
+    };
 
     const updateMaterialTiles = (value) => {
       const target = (value || '').toLowerCase();
-      let activeId = null;
-      materialTiles.forEach(({ option, el }) => {
+      const activeMap = new Map();
+      materialTiles.forEach(({ option, el, grid }) => {
         const isActive = option.value.toLowerCase() === target;
         el.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         el.setAttribute('aria-selected', isActive ? 'true' : 'false');
-        if (isActive) activeId = el.id;
+        if (isActive && grid){
+          activeMap.set(grid, el.id);
+        }
       });
-      if (materialGridEl){
-        if (activeId) materialGridEl.setAttribute('aria-activedescendant', activeId);
-        else materialGridEl.removeAttribute('aria-activedescendant');
-      }
+      [materialGridEl, extraMaterialGridEl].forEach((grid) => {
+        if (!grid) return;
+        const activeId = activeMap.get(grid);
+        if (activeId){ grid.setAttribute('aria-activedescendant', activeId); }
+        else { grid.removeAttribute('aria-activedescendant'); }
+      });
+      syncQuickMaterial(value);
     };
 
     const setMaterialValue = (value, { triggerChange = true } = {}) => {
@@ -1928,49 +2660,85 @@
       }
     };
 
+    const buildMaterialTile = (option, index, gridEl, suffix = '') => {
+      if (!gridEl || !option) return;
+      const tile = document.createElement('button');
+      tile.type = 'button';
+      tile.className = 'material-tile';
+      const baseId = option.id || `stb-material-${index}`;
+      tile.id = suffix ? `${baseId}-${suffix}` : baseId;
+      tile.dataset.value = option.value;
+      tile.setAttribute('role', 'option');
+      tile.setAttribute('aria-pressed', 'false');
+      tile.setAttribute('aria-selected', 'false');
+      tile.setAttribute('aria-label', option.label);
+      tile.dataset.image = option.image || '';
+      if (option.image){
+        tile.style.setProperty('--material-image', `url("${option.image}")`);
+      }
+
+      const image = document.createElement('span');
+      image.className = 'material-tile__image';
+      tile.appendChild(image);
+
+      const caption = document.createElement('span');
+      caption.className = 'material-tile__name';
+      const primaryText = option.shortLabel || option.label;
+      const strongLine = document.createElement('strong');
+      strongLine.textContent = primaryText;
+      caption.appendChild(strongLine);
+      if (option.note){
+        const noteLine = document.createElement('small');
+        noteLine.textContent = option.note;
+        caption.appendChild(noteLine);
+      }
+      tile.title = option.note ? `${option.label} — ${option.note}` : option.label;
+      tile.appendChild(caption);
+
+      tile.addEventListener('click', () => setMaterialValue(option.value));
+
+      materialTiles.push({ option, el: tile, grid: gridEl });
+      gridEl.appendChild(tile);
+    };
+
     if (materialGridEl && materialOptions.length){
       materialGridEl.setAttribute('aria-multiselectable', 'false');
       materialGridEl.innerHTML = '';
       materialOptions.forEach((option, index) => {
         if (!option) return;
-        const tile = document.createElement('button');
-        tile.type = 'button';
-        tile.className = 'material-tile';
-        tile.id = option.id || `stb-material-${index}`;
-        tile.dataset.value = option.value;
-        tile.setAttribute('role', 'option');
-        tile.setAttribute('aria-pressed', 'false');
-        tile.setAttribute('aria-selected', 'false');
-        tile.setAttribute('aria-label', option.label);
-        tile.dataset.image = option.image || '';
-        if (option.image){
-          tile.style.setProperty('--material-image', `url("${option.image}")`);
-        }
-
-        const image = document.createElement('span');
-        image.className = 'material-tile__image';
-        tile.appendChild(image);
-
-        const caption = document.createElement('span');
-        caption.className = 'material-tile__name';
-        const primaryText = option.shortLabel || option.label;
-        const strongLine = document.createElement('strong');
-        strongLine.textContent = primaryText;
-        caption.appendChild(strongLine);
-        if (option.note){
-          const noteLine = document.createElement('small');
-          noteLine.textContent = option.note;
-          caption.appendChild(noteLine);
-        }
-        tile.title = option.note ? `${option.label} — ${option.note}` : option.label;
-        tile.appendChild(caption);
-
-        tile.addEventListener('click', () => setMaterialValue(option.value));
-
-        materialTiles.push({ option, el: tile });
-        materialGridEl.appendChild(tile);
+        buildMaterialTile(option, index, materialGridEl);
       });
       updateMaterialTiles(materialEl ? materialEl.value : '');
+    }
+
+    if (extraMaterialGridEl && materialOptions.length){
+      extraMaterialGridEl.setAttribute('aria-multiselectable', 'false');
+      extraMaterialGridEl.innerHTML = '';
+      materialOptions.forEach((option, index) => {
+        if (!option) return;
+        buildMaterialTile(option, index, extraMaterialGridEl, 'extra');
+      });
+    }
+
+    if (extraMaterialSel && materialOptions.length){
+      extraMaterialSel.innerHTML = '';
+      materialOptions.forEach((option)=>{
+        if (!option) return;
+        const opt = document.createElement('option');
+        opt.value = option.value;
+        opt.textContent = option.label;
+        extraMaterialSel.appendChild(opt);
+      });
+      syncQuickMaterial(materialEl ? materialEl.value : extraMaterialSel.value);
+      extraMaterialSel.addEventListener('change', ()=>{
+        markExtraUsed();
+        setMaterialValue(extraMaterialSel.value);
+      });
+    } else if (extraMaterialSel){
+      extraMaterialSel.addEventListener('change', ()=>{
+        markExtraUsed();
+        setMaterialValue(extraMaterialSel.value);
+      });
     }
 
     function materialMultiplier(){
@@ -1978,13 +2746,88 @@
       if (v.indexOf('długo') !== -1 || v.indexOf('dlugo') !== -1) return 1.5; // folia długowieczna
       return 1.0; // ekonomiczna lub inne
     }
-    if (materialEl) materialEl.addEventListener('change', ()=>{
-      updateMaterialTiles(materialEl.value);
-      updatePriceAndJSON();
-      refreshQtyPrices();
-      updateSummaryMeta();
-    });
-    if (laminateEl) laminateEl.addEventListener('change', ()=>{ updatePriceAndJSON(); refreshQtyPrices(); updateSummaryMeta(); requestDraw(); });
+    if (materialEl){
+      materialEl.addEventListener('change', ()=>{
+        updateMaterialTiles(materialEl.value);
+        updatePriceAndJSON();
+        refreshQtyPrices();
+        updateSummaryMeta();
+      });
+      syncQuickMaterial(materialEl.value);
+    }
+
+    const syncExtraFinish = ()=>{
+      if (!extraFinishSel) return;
+      const val = currentFinishValue();
+      if (val){ extraFinishSel.value = val; }
+    };
+
+    if (finishEl){
+      finishEl.addEventListener('change', ()=>{
+        syncExtraFinish();
+        updatePriceAndJSON();
+        refreshQtyPrices();
+        updateSummaryMeta();
+      });
+      syncExtraFinish();
+    }
+
+    if (extraFinishSel){
+      extraFinishSel.addEventListener('change', ()=>{
+        markExtraUsed();
+        if (finishEl && finishEl.value !== extraFinishSel.value){
+          finishEl.value = extraFinishSel.value;
+          finishEl.dispatchEvent(new Event('change', { bubbles:true }));
+          return;
+        }
+        updatePriceAndJSON();
+        refreshQtyPrices();
+        updateSummaryMeta();
+      });
+      if (!finishEl){ syncExtraFinish(); }
+    }
+
+    const syncQuickLaminate = ()=>{
+      if (!extraLaminateEl) return;
+      extraLaminateEl.checked = !!(laminateEl && laminateEl.checked);
+    };
+
+    if (laminateEl){
+      laminateEl.addEventListener('change', ()=>{
+        syncQuickLaminate();
+        updatePriceAndJSON();
+        refreshQtyPrices();
+        updateSummaryMeta();
+        requestDraw();
+      });
+      syncQuickLaminate();
+    }
+    if (extraLaminateEl){
+      extraLaminateEl.addEventListener('change', ()=>{
+        markExtraUsed();
+        if (laminateEl && laminateEl.checked !== extraLaminateEl.checked){
+          laminateEl.checked = extraLaminateEl.checked;
+          laminateEl.dispatchEvent(new Event('change', { bubbles:true }));
+        } else {
+          updatePriceAndJSON();
+          refreshQtyPrices();
+          updateSummaryMeta();
+          requestDraw();
+        }
+      });
+      if (!laminateEl){
+        syncQuickLaminate();
+      }
+    }
+
+    if (expressEl){
+      expressEl.addEventListener('change', ()=>{
+        markExtraUsed();
+        updatePriceAndJSON();
+        refreshQtyPrices();
+        updateSummaryMeta();
+      });
+    }
 
     /* ===== Tekst ===== */
     const refreshFontPreview = ()=>{
@@ -2165,8 +3008,10 @@
 
       if (total<99) total=99;
       if (laminateEl && laminateEl.checked){ total *= 1.15; } // LAMINAT +15%
+      const expressEnabled = !!(expressEl && expressEl.checked);
+      if (expressEnabled){ total *= EXPRESS_MULTIPLIER; }
       const net=total/1.23;
-      return { total, net, rate, areaOne, total_area, qty };
+      return { total, net, rate, areaOne, total_area, qty, express: expressEnabled, express_multiplier: expressEnabled ? EXPRESS_MULTIPLIER : 1 };
     }
     function computeBaselineA(q){ const areaOne=computeAreaM2(); const qty=Math.max(1, Math.floor(q||1)); return areaOne*200*qty; }
 
@@ -2220,6 +3065,63 @@
       }
     }
 
+    function syncModalQuantityControls(qty, mode){
+      const qtyInt = Math.max(1, Math.floor(Number.isFinite(qty) ? qty : parseInt(qty, 10) || 0));
+      if (modalQtyInput && qtyInt){
+        modalQtyInput.value = String(qtyInt);
+      }
+      if (modalQtySelect){
+        if (mode === 'custom'){
+          modalQtySelect.value = 'custom';
+        } else {
+          const targetVal = String(qtyInt);
+          if (modalQtySelect.querySelector(`option[value="${targetVal}"]`)){
+            modalQtySelect.value = targetVal;
+          } else {
+            modalQtySelect.value = 'custom';
+          }
+        }
+      }
+    }
+
+    function enterCustomQuantityMode(){
+      const current = getCurrentQty();
+      if (Number.isFinite(current)){ lastPresetQty = current; }
+      if (qtyCustom && qtyCustom.classList.contains('is-hidden')){
+        qtyCustom.classList.remove('is-hidden');
+      }
+      if (qtyCustomToggle){ qtyCustomToggle.setAttribute('aria-expanded','true'); }
+      if (qtyList){ $$('.opt-item[data-qty]', qtyList).forEach(b=>b.setAttribute('aria-pressed','false')); }
+      const q = Math.max(1, Math.floor(parseNum(qtyEl,1)));
+      syncModalQuantityControls(q, 'custom');
+      refreshQtyPrices();
+      updatePriceAndJSON();
+      requestDraw();
+    }
+
+    function exitCustomQuantityMode(){
+      const target = lastPresetQty || getCurrentQty() || 1;
+      applyQuantityPreset(target);
+    }
+
+    function applyQuantityPreset(q){
+      const qty = Math.max(1, parseInt(q, 10) || 1);
+      lastPresetQty = qty;
+      if (qtyList){
+        $$('.opt-item[data-qty]', qtyList).forEach(btn=>{
+          const btnQty = parseInt(btn.getAttribute('data-qty'),10)||0;
+          btn.setAttribute('aria-pressed', btnQty === qty ? 'true' : 'false');
+        });
+      }
+      if (qtyCustom){ qtyCustom.classList.add('is-hidden'); }
+      if (qtyCustomToggle){ qtyCustomToggle.setAttribute('aria-expanded','false'); }
+      if (qtyEl){ qtyEl.value = String(qty); }
+      syncModalQuantityControls(qty, 'preset');
+      refreshQtyPrices();
+      updatePriceAndJSON();
+      requestDraw();
+    }
+
     function formatPLTimeOnly(dt){
       try{
         return dt.toLocaleTimeString('pl-PL', { hour:'2-digit', minute:'2-digit' });
@@ -2230,56 +3132,51 @@
       }
     }
 
-    function updatePriceTimerDisplay(){
-      if (!priceTimerEls.length) return;
-      if (!priceTimerDeadline){
-        priceTimerDeadline = Date.now() + PRICE_TIMER_DURATION;
-      }
-      const now = Date.now();
-      let remaining = priceTimerDeadline - now;
-      if (remaining <= 0){
-        priceTimerDeadline = now + PRICE_TIMER_DURATION;
-        remaining = priceTimerDeadline - now;
-      }
-      const totalSeconds = Math.max(0, Math.floor(remaining / 1000));
-      const minutes = Math.floor(totalSeconds / 60);
-      const seconds = totalSeconds % 60;
-      const countdown = minutes.toString().padStart(2, '0') + ':' + seconds.toString().padStart(2, '0');
-      const current = new Date();
-      const dateStr = formatPLDateOnly(current);
-      const timeStr = formatPLTimeOnly(current);
-      const text = 'Aktualne przez ' + countdown + ' • ' + dateStr + ', ' + timeStr;
-      priceTimerEls.forEach((el)=>{ el.textContent = text; });
-    }
+    function updateConfigSummary(calc){
+      if (!extraSummaryWrap) return;
+      extraSummaryWrap.hidden = false;
+      const qty = getCurrentQty();
+      const summaryCalc = calc || computeTotalForQty(qty);
+      const expressEnabled = !!(expressEl && expressEl.checked);
 
-    function restartPriceTimer(){
-      if (!priceTimerEls.length) return;
-      priceTimerDeadline = Date.now() + PRICE_TIMER_DURATION;
-      updatePriceTimerDisplay();
-      if (!priceTimerInterval){
-        priceTimerInterval = window.setInterval(updatePriceTimerDisplay, 1000);
+      if (sumShapeEl) sumShapeEl.textContent = shapeLabel(shape);
+      if (sumMaterialEl) sumMaterialEl.textContent = materialEl?.value || 'Folia ekonomiczna';
+      if (sumFinishEl) sumFinishEl.textContent = finishLabel();
+      if (sumLaminateEl) sumLaminateEl.textContent = (laminateEl && laminateEl.checked) ? 'Tak' : 'Nie';
+      if (sumExpressEl) sumExpressEl.textContent = expressEnabled ? 'Przyspieszona (+15%)' : 'Standardowa';
+
+      let leadDays = leadTimeBusinessDays(summaryCalc.total_area || 0);
+      if (expressEnabled){ leadDays = Math.max(0, leadDays - 1); }
+      else if (leadDays < 0){ leadDays = 0; }
+
+      if (sumLeadtimeEl){
+        const shipDate = addBusinessDays(new Date(), leadDays);
+        sumLeadtimeEl.textContent = formatPLDateOnly(shipDate);
+        if (expressEnabled){ sumLeadtimeEl.dataset.express = '1'; }
+        else { delete sumLeadtimeEl.dataset.express; }
       }
     }
 
-    function stopPriceTimer(){
-      if (priceTimerInterval){
-        window.clearInterval(priceTimerInterval);
-        priceTimerInterval = null;
-      }
-    }
+    const markExtraUsed = ()=>{
+      updateConfigSummary();
+    };
 
     function updateSummaryMeta(calc){
-      if (sumShapeEl)    sumShapeEl.textContent = 'Kształt: ' + shapeLabel(shape);
-      if (sumMaterialEl) sumMaterialEl.textContent = 'Materiał: ' + (materialEl?.value || 'Folia ekonomiczna');
-      if (sumLaminateEl) sumLaminateEl.textContent = 'Laminat: ' + (laminateEl?.checked ? 'tak' : 'nie');
+      if (sumShapeEl)    sumShapeEl.textContent = shapeLabel(shape);
+      if (sumMaterialEl) sumMaterialEl.textContent = materialEl?.value || 'Folia ekonomiczna';
+      if (sumFinishEl)   sumFinishEl.textContent = finishLabel();
+      if (sumLaminateEl) sumLaminateEl.textContent = (laminateEl && laminateEl.checked) ? 'Tak' : 'Nie';
 
       const qty = getCurrentQty();
       const c = calc || computeTotalForQty(qty);
-      const days = leadTimeBusinessDays(c.total_area || 0);
-      const target = addBusinessDays(new Date(), days);
-      const leadText = 'Wysyłka do ' + formatPLDateOnly(target);
-      if (sumLeadtimeEl) sumLeadtimeEl.textContent = leadText;
-      totalLeadOutEls.forEach((el)=>{ el.textContent = leadText; });
+      const expressEnabled = !!(expressEl && expressEl.checked);
+      if (sumExpressEl) sumExpressEl.textContent = expressEnabled ? 'Przyspieszona (+15%)' : 'Standardowa';
+      if (sumLeadtimeEl){
+        sumLeadtimeEl.textContent = '';
+        delete sumLeadtimeEl.dataset.express;
+      }
+
+      updateConfigSummary(c);
     }
 
     // popup do wyceny
@@ -2345,6 +3242,11 @@
     function updatePriceAndJSON(){
       const qty = getCurrentQty();
       const calc = computeTotalForQty(qty);
+      const expressEnabled = !!calc.express;
+      let leadDays = leadTimeBusinessDays(calc.total_area || 0);
+      if (expressEnabled){ leadDays = Math.max(0, leadDays - 1); }
+      const finishValue = currentFinishValue();
+      const finishLabelText = finishLabel(finishValue);
       const baseline = computeBaselineA(qty);
       let pctSave = 0;
       if (baseline > 0.0001){
@@ -2352,12 +3254,38 @@
         pctSave = Math.max(0, 100 - ratioPct);
       }
 
+      const safeQty = Number.isFinite(qty) && qty > 0 ? qty : 0;
+
       if (calc.total_area >= 100){
         totalOutEls.forEach((el)=> clearWooPrice(el, 'WYCENA INDYWIDUALNA'));
         totalNetOutEls.forEach((el)=> clearWooPrice(el, ''));
+        totalVatOutEls.forEach((el)=> clearWooPrice(el, ''));
+        totalUnitOutEls.forEach((el)=> clearWooPrice(el, ''));
       } else {
         totalOutEls.forEach((el)=> renderWooPrice(el, calc.total));
-        totalNetOutEls.forEach((el)=> renderWooPrice(el, calc.net, { prefix: 'Netto:' }));
+        totalNetOutEls.forEach((el)=>{
+          if (!el) return;
+          if (el.dataset && el.dataset.stbNetPlain === '1'){
+            renderWooPrice(el, calc.net);
+            return;
+          }
+          const prefix = (el.dataset && el.dataset.stbNetPrefix) ? String(el.dataset.stbNetPrefix) : 'Netto:';
+          const opts = prefix ? { prefix } : {};
+          renderWooPrice(el, calc.net, opts);
+        });
+        const vatAmount = Math.max(0, calc.total - calc.net);
+        totalVatOutEls.forEach((el)=>{
+          if (!el) return;
+          const label = (el.dataset && el.dataset.stbVatLabel) ? String(el.dataset.stbVatLabel) : 'VAT (23%):';
+          const opts = label ? { prefix: label } : {};
+          renderWooPrice(el, vatAmount, opts);
+        });
+        if (safeQty > 0){
+          const unitNet = calc.net / safeQty;
+          totalUnitOutEls.forEach((el)=> renderWooPrice(el, unitNet));
+        } else {
+          totalUnitOutEls.forEach((el)=> clearWooPrice(el, ''));
+        }
       }
       const saveText = (pctSave >= 0.5) ? ('Oszczędzasz ' + Math.round(pctSave) + '%') : '';
       totalSaveOutEls.forEach((el)=>{ el.textContent = saveText; });
@@ -2374,7 +3302,6 @@
       }
 
       updateSummaryMeta(calc);
-      restartPriceTimer();
 
       // Popup jeśli >= 100 m2
       if (calc.total_area >= 100){
@@ -2403,8 +3330,13 @@
           total_price_pln: +calc.total.toFixed(2),
           total_price_net_pln: +calc.net.toFixed(2),
           material: (materialEl && materialEl.value) ? materialEl.value : 'Folia ekonomiczna',
+          finish: finishValue,
+          finish_label: finishLabelText,
           laminate: !!(laminateEl && laminateEl.checked),
-          file: uploaded.name ? { name: uploaded.name, type: uploaded.type, size: uploaded.size } : null,
+          express_production: expressEnabled,
+          express_multiplier: calc.express_multiplier || 1,
+          lead_time_business_days: leadDays,
+          file: uploaded.name ? { name: uploaded.name, type: uploaded.type, size: uploaded.size, url: uploaded.url || null, upload_id: uploaded.uploadId || null } : null,
           text: {
             value: textObj.text || '',
             font: textObj.font || 'Inter',
@@ -2433,6 +3365,11 @@
           },
           preview_png: safePreview()
         };
+        if (uploaded.uploadId){ payload.file_upload_id = uploaded.uploadId; }
+        if (uploaded.url){ payload.file_url = uploaded.url; }
+        if (uploaded.uploadBytes){ payload.file_upload_size = uploaded.uploadBytes; }
+        if (uploaded.name){ payload.file_name = uploaded.name; }
+        if (uploaded.type){ payload.file_type = uploaded.type; }
         hidden.value = JSON.stringify(payload);
       }
     }
@@ -2446,8 +3383,8 @@
       if (wEl) wEl.value = String(parseFloat(item.getAttribute('data-w')) || 10);
       if (hEl) hEl.value = String(parseFloat(item.getAttribute('data-h')) || 10);
       if (uploaded.img){
-        updateFileMeta(uploaded.img.width, uploaded.img.height, uploaded.type, uploaded.size,
-          uploaded.pdf ? `PDF • ${(uploaded.pdf.numPages||1)} str.` : '');
+        updateFileMeta(sourcePixelWidth(uploaded.img), sourcePixelHeight(uploaded.img), uploaded.type, uploaded.size,
+          uploaded.pdf ? pdfSummaryLabel(uploaded.pdf) : '');
       }
       rebuildQR(); requestDraw();
     });
@@ -2460,26 +3397,80 @@
     if (sizeCustomBox) sizeCustomBox.addEventListener('input', (e)=>{
       if (e.target.matches('input')){
         if (uploaded.img){
-          updateFileMeta(uploaded.img.width, uploaded.img.height, uploaded.type, uploaded.size,
-            uploaded.pdf ? `PDF • ${(uploaded.pdf.numPages||1)} str.` : '');
+          updateFileMeta(sourcePixelWidth(uploaded.img), sourcePixelHeight(uploaded.img), uploaded.type, uploaded.size,
+            uploaded.pdf ? pdfSummaryLabel(uploaded.pdf) : '');
         }
         rebuildQR(); requestDraw();
       }
     });
 
     if (qtyList) qtyList.addEventListener('click', (e)=>{
-      const item = e.target.closest('.opt-item[data-qty]'); if(!item) return;
-      if (qtyCustom) qtyCustom.classList.add('is-hidden');
-      $$('.opt-item[data-qty]', qtyList).forEach(b=>b.setAttribute('aria-pressed','false'));
-      item.setAttribute('aria-pressed','true');
-      refreshQtyPrices(); updatePriceAndJSON(); requestDraw();
+      const item = e.target.closest('.opt-item[data-qty]');
+      if (!item) return;
+      e.preventDefault();
+      applyQuantityPreset(item.getAttribute('data-qty'));
     });
     if (qtyCustomToggle) qtyCustomToggle.addEventListener('click', ()=>{
-      if (!qtyList || !qtyCustom) return;
-      $$('.opt-item[data-qty]', qtyList).forEach(b=>b.setAttribute('aria-pressed','false'));
-      qtyCustom.classList.toggle('is-hidden'); refreshQtyPrices(); updatePriceAndJSON(); requestDraw();
+      if (!qtyCustom) return;
+      if (qtyCustom.classList.contains('is-hidden')){
+        enterCustomQuantityMode();
+      } else {
+        exitCustomQuantityMode();
+      }
     });
-    if (qtyEl) qtyEl.addEventListener('input', ()=>{ refreshQtyPrices(); updatePriceAndJSON(); });
+    if (qtyEl) qtyEl.addEventListener('input', ()=>{
+      const q = Math.max(1, Math.floor(parseNum(qtyEl,1)));
+      if (modalQtyInput){ modalQtyInput.value = String(q); }
+      if (modalQtySelect){
+        if (qtyCustom && !qtyCustom.classList.contains('is-hidden') ){
+          modalQtySelect.value = 'custom';
+        } else if (modalQtySelect.querySelector(`option[value="${q}"]`)){
+          modalQtySelect.value = String(q);
+        } else {
+          modalQtySelect.value = 'custom';
+        }
+      }
+      refreshQtyPrices();
+      updatePriceAndJSON();
+      requestDraw();
+    });
+
+    if (modalQtySelect) modalQtySelect.addEventListener('change', ()=>{
+      const val = modalQtySelect.value;
+      if (val === 'custom'){
+        if (qtyEl){
+          const q = Math.max(1, Math.floor(parseNum(qtyEl,1)));
+          if (modalQtyInput){ modalQtyInput.value = String(q); }
+        }
+        enterCustomQuantityMode();
+      } else {
+        applyQuantityPreset(val);
+        if (modalQtyInput){
+          const q = Math.max(1, parseInt(val,10)||1);
+          modalQtyInput.value = String(q);
+        }
+      }
+    });
+
+    if (modalQtyInput) modalQtyInput.addEventListener('input', ()=>{
+      const q = Math.max(1, Math.floor(parseFloat(modalQtyInput.value||'1')));
+      if (qtyEl){ qtyEl.value = String(q); }
+      if (modalQtySelect){ modalQtySelect.value = 'custom'; }
+      if (!qtyCustom || qtyCustom.classList.contains('is-hidden')){
+        enterCustomQuantityMode();
+      } else {
+        syncModalQuantityControls(q, 'custom');
+        refreshQtyPrices();
+        updatePriceAndJSON();
+        requestDraw();
+      }
+    });
+
+    lastPresetQty = getCurrentQty();
+    syncModalQuantityControls(
+      lastPresetQty,
+      (qtyCustom && !qtyCustom.classList.contains('is-hidden')) ? 'custom' : 'preset'
+    );
 
     function show(el){ if(el) el.classList.remove('is-hidden'); }
     function hide(el){ if(el) el.classList.add('is-hidden'); }
@@ -2499,8 +3490,8 @@
       if (hEl) hEl.value = String(h);
       if (sizeList){ $$('.opt-item[data-w]', sizeList).forEach(b=>b.setAttribute('aria-pressed','false')); }
       if (uploaded.img){
-        updateFileMeta(uploaded.img.width, uploaded.img.height, uploaded.type, uploaded.size,
-          uploaded.pdf ? `PDF • ${(uploaded.pdf.numPages||1)} str.` : '');
+        updateFileMeta(sourcePixelWidth(uploaded.img), sourcePixelHeight(uploaded.img), uploaded.type, uploaded.size,
+          uploaded.pdf ? pdfSummaryLabel(uploaded.pdf) : '');
       }
       rebuildQR(); requestDraw();
     };
@@ -2517,10 +3508,15 @@
     if (sumQtyInp){
       sumQtyInp.addEventListener('input', ()=>{
         const q = Math.max(1, Math.floor(parseFloat(sumQtyInp.value||'1')));
-        if (qtyCustom) qtyCustom.classList.remove('is-hidden');
         if (qtyEl) qtyEl.value = String(q);
-        if (qtyList){ $$('.opt-item[data-qty]', qtyList).forEach(b=>b.setAttribute('aria-pressed','false')); }
-        refreshQtyPrices(); updatePriceAndJSON();
+        if (!qtyCustom || qtyCustom.classList.contains('is-hidden')){
+          enterCustomQuantityMode();
+        } else {
+          syncModalQuantityControls(q, 'custom');
+          refreshQtyPrices();
+          updatePriceAndJSON();
+          requestDraw();
+        }
       });
     }
 
@@ -2573,7 +3569,8 @@
         textObj.offsetX = 0; textObj.offsetY = 0; textObj.scale = 1; textObj.rotDeg = 0;
         updateTextSizeUI();
       } else {
-        transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
+        const baseScale = initialImageScale(uploaded.img || null);
+        transform = { scale:baseScale, offsetX:0, offsetY:0, rotDeg:0 };
       }
       requestDraw();
     }
@@ -2641,6 +3638,95 @@
       finally{ ctx2.restore(); }
     }
 
+    async function attachGeneratedPdfToOrder(pdfBlob, fileName, meta={}){
+      if (!pdfBlob || typeof pdfBlob !== 'object' || typeof pdfBlob.size === 'undefined'){ return; }
+
+      const limitBytes = (Number.isFinite(MAX_UPLOAD_BYTES) && MAX_UPLOAD_BYTES > 0) ? MAX_UPLOAD_BYTES : null;
+      const blobSize = Number.isFinite(pdfBlob.size) ? pdfBlob.size : 0;
+      if (limitBytes && blobSize > limitBytes){
+        if (uploadSummary){
+          const limitLabel = prettyBytes(limitBytes);
+          const sizeLabel  = prettyBytes(blobSize);
+          uploadSummary.innerHTML = `Projekt ma ${sizeLabel} i przekracza limit ${limitLabel}.<br>Większe pliki prześlij proszę przez <a href="https://wetransfer.com/" target="_blank" rel="noopener">WeTransfer</a> i dołącz link w uwagach do zamówienia.`;
+        }
+        return;
+      }
+
+      const fallbackName = fileName && typeof fileName === 'string' && fileName.trim() ? fileName.trim() : `naklejka_${Date.now()}.pdf`;
+      let fileForUpload = null;
+      if (typeof File === 'function'){
+        try {
+          fileForUpload = new File([pdfBlob], fallbackName, { type:'application/pdf' });
+        } catch(err) {
+          fileForUpload = null;
+        }
+      }
+      if (!fileForUpload){
+        try {
+          const blobSlice = pdfBlob.slice ? pdfBlob.slice(0, pdfBlob.size, 'application/pdf') : pdfBlob;
+          fileForUpload = blobSlice;
+        } catch(err){
+          fileForUpload = pdfBlob;
+        }
+        try { fileForUpload.name = fallbackName; } catch(err){}
+      }
+
+      if (uploadSummary){
+        uploadSummary.textContent = 'Zapisuję projekt w zamówieniu…';
+      }
+
+      try {
+        const uploadInfo = await uploadFileToServer(fileForUpload);
+        if (!uploadInfo){
+          if (uploadSummary){
+            uploadSummary.textContent = 'Nie udało się zapisać projektu.';
+          }
+          return;
+        }
+
+        const savedName = uploadInfo.name || fallbackName;
+        const savedSize = uploadInfo.size || blobSize;
+        const savedType = uploadInfo.type || 'application/pdf';
+        const uploadId  = uploadInfo.uploadId || 0;
+        const uploadUrl = uploadInfo.url || '';
+
+        if (fName){ fName.textContent = savedName || 'brak pliku'; }
+        if (uploadSummary){
+          const label = savedName || 'Plik';
+          uploadSummary.textContent = `Projekt zapisany: ${label} • ${prettyBytes(savedSize)}`;
+        }
+
+        uploaded.name = savedName;
+        uploaded.type = savedType;
+        uploaded.size = savedSize;
+        uploaded.uploadId = uploadId;
+        uploaded.url = uploadUrl;
+        uploaded.uploadBytes = savedSize;
+
+        const pageCount = (()=>{
+          if (meta && Number.isFinite(meta.pages)){ return Math.max(1, Math.round(meta.pages)); }
+          if (uploaded.pdf && Number.isFinite(uploaded.pdf.numPages)){ return Math.max(1, Math.round(uploaded.pdf.numPages)); }
+          return 1;
+        })();
+
+        uploaded.pdf = Object.assign({}, uploaded.pdf || {}, { numPages: pageCount, generated: true });
+
+        if (meta && meta.previewDataURL && !uploaded.dataURL){
+          uploaded.dataURL = meta.previewDataURL;
+        }
+
+        const widthPx  = meta && Number.isFinite(meta.widthPx)  ? Math.max(0, Math.round(meta.widthPx))  : 0;
+        const heightPx = meta && Number.isFinite(meta.heightPx) ? Math.max(0, Math.round(meta.heightPx)) : 0;
+        updateFileMeta(widthPx, heightPx, savedType, savedSize, `PDF • ${pageCount} str.`);
+        updatePriceAndJSON();
+      } catch(err){
+        console.error('Projekt PDF — zapis nie powiódł się:', err);
+        if (uploadSummary){
+          uploadSummary.textContent = 'Nie udało się zapisać projektu.';
+        }
+      }
+    }
+
     async function exportPDF300(){
       try{
         if (!PDFLib){ alert('Brak biblioteki PDF (PDF-Lib). Upewnij się, że assets/vendor/pdf-lib.min.js jest załadowany.'); return; }
@@ -2682,7 +3768,7 @@
               const ringPxPrev = outlineEnabled ? (pxPerCm(rPrev) * (outlineMM/10)) : 0;
               const ringPxOut  = ringPxPrev > 0 ? Math.max(1, Math.round(ringPxPrev * ((kx+ky)/2))) : 0;
 
-              const iw = uploaded.img.width, ih = uploaded.img.height;
+              const iw = sourcePixelWidth(uploaded.img), ih = sourcePixelHeight(uploaded.img);
               const basePrev = Math.max(rPrev.w/iw, rPrev.h/ih);
 
               const fit = diecutSafePlacement(rPrev, uploaded.img, (transform.scale||1), (transform.rotDeg||0), ringPxPrev, 2);
@@ -2781,7 +3867,7 @@
             });
           } else {
             exportShapeClip(octx, pxW, pxH, ()=>{
-              const iw=uploaded.img.width, ih=uploaded.img.height;
+              const iw=sourcePixelWidth(uploaded.img), ih=sourcePixelHeight(uploaded.img);
               const base=Math.max(pxW/iw, pxH/ih)*(transform.scale||1);
               const dw=iw*base, dh=ih*base;
               const cx=pxW/2 + (transform.offsetX||0)*kx;
@@ -2872,6 +3958,23 @@
 
         const blob = new Blob([pdfBytes], {type:'application/pdf'});
         const name = `naklejka_${String(w_cm).replace('.',',')}x${String(h_cm).replace('.',',')}cm_${DPI}dpi.pdf`;
+        let pageCount = 1;
+        try {
+          if (typeof pdf.getPageCount === 'function'){
+            const maybe = pdf.getPageCount();
+            if (Number.isFinite(maybe) && maybe > 0){ pageCount = Math.round(maybe); }
+          } else if (typeof pdf.getPages === 'function'){
+            const pages = pdf.getPages();
+            if (Array.isArray(pages) && pages.length){ pageCount = pages.length; }
+          }
+        } catch(err){}
+        const previewDataURL = (off && typeof off.toDataURL === 'function') ? off.toDataURL('image/png') : null;
+        attachGeneratedPdfToOrder(blob, name, {
+          widthPx: pxW,
+          heightPx: pxH,
+          pages: pageCount,
+          previewDataURL
+        });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a);
         a.click();
@@ -3011,6 +4114,7 @@
     /* ===== Modal ===== */
     const modal = byId('stb-modal');
     const modalContent = modal ? modal.querySelector('.stb-modal__content') : null;
+    const modalMain = byId('stb-modal-main');
     const openBtn = byId('stb-open-modal');
     const closeBtn = byId('stb-close-modal');
     const backdrop = modal ? modal.querySelector('[data-close]') : null;
@@ -3024,9 +4128,10 @@
     }
     function openModal(){
       ensureModalInBody();
-      if (!modal || !modalContent || !designer) return;
+      const host = modalMain || modalContent;
+      if (!modal || !host || !designer) return;
       if (!placeholder.parentNode){ designer.parentNode.insertBefore(placeholder, designer); }
-      modalContent.appendChild(designer);
+      host.appendChild(designer);
       window.scrollTo(0,0);
       const sb = window.innerWidth - document.documentElement.clientWidth;
       if (sb>0) document.body.style.paddingRight = sb + 'px';
