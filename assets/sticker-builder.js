@@ -243,20 +243,29 @@
       return '';
     }
 
+    function resolveConfiguredWorkerSrc(){
+      if (pdfjsConfig && typeof pdfjsConfig.workerUrl === 'string' && pdfjsConfig.workerUrl){
+        return pdfjsConfig.workerUrl;
+      }
+      if (pdfjsConfig && typeof pdfjsConfig.cdnWorkerUrl === 'string' && pdfjsConfig.cdnWorkerUrl){
+        return pdfjsConfig.cdnWorkerUrl;
+      }
+      if (pdfjsConfig && typeof pdfjsConfig.mainUrl === 'string'){
+        return guessWorkerUrl(pdfjsConfig.mainUrl);
+      }
+      return '';
+    }
+
     async function ensurePdfJs(){
       const existing = pickPdfGlobal();
       if (existing){
         if (existing.GlobalWorkerOptions){
-          let workerSrc = '';
-          if (pdfjsConfig && typeof pdfjsConfig.workerUrl === 'string' && pdfjsConfig.workerUrl){
-            workerSrc = pdfjsConfig.workerUrl;
-          } else if (pdfjsConfig && typeof pdfjsConfig.cdnWorkerUrl === 'string' && pdfjsConfig.cdnWorkerUrl){
-            workerSrc = pdfjsConfig.cdnWorkerUrl;
-          } else if (pdfjsConfig && typeof pdfjsConfig.mainUrl === 'string'){
-            workerSrc = guessWorkerUrl(pdfjsConfig.mainUrl);
-          }
+          const workerSrc = resolveConfiguredWorkerSrc();
           if (workerSrc){
             existing.GlobalWorkerOptions.workerSrc = workerSrc;
+            if (typeof existing.disableWorker !== 'undefined'){ existing.disableWorker = false; }
+          } else if (typeof existing.disableWorker !== 'undefined'){
+            existing.disableWorker = true;
           }
         }
         return true;
@@ -281,16 +290,12 @@
         const lib = pickPdfGlobal();
         const ready = !!(lib && typeof lib.getDocument === 'function');
         if (ready && lib.GlobalWorkerOptions){
-          let workerSrc = '';
-          if (pdfjsConfig && typeof pdfjsConfig.workerUrl === 'string' && pdfjsConfig.workerUrl){
-            workerSrc = pdfjsConfig.workerUrl;
-          } else if (pdfjsConfig && typeof pdfjsConfig.cdnWorkerUrl === 'string' && pdfjsConfig.cdnWorkerUrl){
-            workerSrc = pdfjsConfig.cdnWorkerUrl;
-          } else if (pdfjsConfig && typeof pdfjsConfig.mainUrl === 'string'){
-            workerSrc = guessWorkerUrl(pdfjsConfig.mainUrl);
-          }
+          const workerSrc = resolveConfiguredWorkerSrc();
           if (workerSrc){
             lib.GlobalWorkerOptions.workerSrc = workerSrc;
+            if (typeof lib.disableWorker !== 'undefined'){ lib.disableWorker = false; }
+          } else if (typeof lib.disableWorker !== 'undefined'){
+            lib.disableWorker = true;
           }
         }
         return ready;
@@ -2218,36 +2223,86 @@
           if (!pdfjsLib || typeof pdfjsLib.getDocument !== 'function'){
             throw new Error('Biblioteka PDF.js nie została zainicjalizowana.');
           }
-          const buf = await f.arrayBuffer();
-          const pdfTask = pdfjsLib.getDocument({ data: new Uint8Array(buf) });
-          const pdf = await pdfTask.promise;
-          const page = await pdf.getPage(1);
-          const viewport = page.getViewport({ scale: 2 });
-          const c = document.createElement('canvas');
-          c.width  = Math.max(1, Math.ceil(viewport.width));
-          c.height = Math.max(1, Math.ceil(viewport.height));
-          const cctx = c.getContext('2d');
-          await page.render({ canvasContext: cctx, viewport }).promise;
 
-          let previewSource = c;
-          if (typeof window.createImageBitmap === 'function'){
-            try{
-              previewSource = await window.createImageBitmap(c);
-            }catch(bitmapErr){
-              console.warn('createImageBitmap failed, falling back to canvas preview.', bitmapErr);
-              previewSource = c;
+          const workerSrc = resolveConfiguredWorkerSrc();
+          const fileBuffer = new Uint8Array(await f.arrayBuffer());
+
+          const renderAttempt = async (forceDisableWorker)=>{
+            if (pdfjsLib.GlobalWorkerOptions){
+              if (forceDisableWorker){
+                try{ pdfjsLib.GlobalWorkerOptions.workerSrc = ''; }catch(_){ /* noop */ }
+                if (typeof pdfjsLib.GlobalWorkerOptions.workerPort !== 'undefined'){
+                  try{ pdfjsLib.GlobalWorkerOptions.workerPort = null; }catch(_){ /* noop */ }
+                }
+              } else if (workerSrc){
+                pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+              }
             }
-          }
+            if (typeof pdfjsLib.disableWorker !== 'undefined'){
+              pdfjsLib.disableWorker = !!forceDisableWorker;
+            }
 
-          let dataURL = '';
+            const pdfTask = pdfjsLib.getDocument({ data: fileBuffer });
+            const pdf = await pdfTask.promise;
+            const page = await pdf.getPage(1);
+            const viewport = page.getViewport({ scale: 2 });
+            const c = document.createElement('canvas');
+            c.width  = Math.max(1, Math.ceil(viewport.width));
+            c.height = Math.max(1, Math.ceil(viewport.height));
+            const cctx = c.getContext('2d');
+            await page.render({ canvasContext: cctx, viewport }).promise;
+
+            if (typeof page.cleanup === 'function'){ try{ page.cleanup(); }catch(_){ /* noop */ } }
+
+            const pageCount = pdf.numPages || 1;
+            if (typeof pdf.cleanup === 'function'){ try{ pdf.cleanup(); }catch(_){ /* noop */ } }
+
+            let previewSource = c;
+            if (typeof window.createImageBitmap === 'function'){
+              try{
+                previewSource = await window.createImageBitmap(c);
+              }catch(bitmapErr){
+                console.warn('createImageBitmap failed, falling back to canvas preview.', bitmapErr);
+                previewSource = c;
+              }
+            }
+
+            let dataURL = '';
+            try{
+              dataURL = c.toDataURL('image/png');
+            }catch(toDataUrlErr){
+              console.warn('PDF preview data URL failed:', toDataUrlErr);
+            }
+
+            return {
+              previewSource,
+              dataURL,
+              pxW: c.width,
+              pxH: c.height,
+              pageCount
+            };
+          };
+
+          let rendered = null;
+          let workerRetried = false;
           try{
-            dataURL = c.toDataURL('image/png');
-          }catch(toDataUrlErr){
-            console.warn('PDF preview data URL failed:', toDataUrlErr);
+            rendered = await renderAttempt(false);
+          }catch(err){
+            const errMsg = (err && err.message) ? String(err.message) : String(err);
+            const workerRelated = /worker/i.test(errMsg || '') || (err && err.name && /worker/i.test(String(err.name)));
+            if (!workerRelated){
+              throw err;
+            }
+            workerRetried = true;
+            console.warn('PDF preview worker error, ponawiam bez workera…', err);
+            rendered = await renderAttempt(true);
           }
 
-          const pxW = c.width;
-          const pxH = c.height;
+          if (!rendered){
+            throw new Error('Nie udało się wyrenderować PDF.');
+          }
+
+          const { previewSource, dataURL, pxW, pxH, pageCount } = rendered;
 
           uploaded = {
             name: finalName,
@@ -2255,7 +2310,7 @@
             size:uploadedSize,
             dataURL: dataURL || null,
             img: previewSource,
-            pdf:{ numPages: pdf.numPages||1 },
+            pdf:{ numPages: pageCount, workerDisabled: workerRetried },
             uploadId:uploadedId,
             url:uploadedUrl,
             uploadBytes:uploadedSize
@@ -2263,7 +2318,7 @@
           if (fName) fName.textContent = finalName || 'brak pliku';
           const initScale = initialImageScale(uploaded.img);
           transform = { scale:initScale, offsetX:0, offsetY:0, rotDeg:0 };
-          updateFileMeta(pxW, pxH, (uploadedType || 'application/pdf'), uploadedSize, `PDF • ${pdf.numPages||1} str.`);
+          updateFileMeta(pxW, pxH, (uploadedType || 'application/pdf'), uploadedSize, `PDF • ${pageCount} str.`);
           setToolTarget('image');
           requestDraw();
           updatePriceAndJSON();
