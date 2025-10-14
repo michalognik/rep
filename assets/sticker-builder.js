@@ -716,28 +716,79 @@
       progress(12);
       const buffer = await file.arrayBuffer();
       progress(20);
-      const loadingTask = pdfjsLib.getDocument({ data: buffer });
-      if (loadingTask){
-        const progressHandler = (evt)=>{
-          if (!evt || !evt.total) return;
-          const ratio = Math.max(0, Math.min(1, evt.loaded / evt.total));
-          progress(20 + Math.round(ratio * 40));
-        };
-        try {
-          if ('onProgress' in loadingTask){
-            loadingTask.onProgress = progressHandler;
-          } else if (typeof loadingTask.onProgress === 'function'){
-            const prev = loadingTask.onProgress.bind(loadingTask);
-            loadingTask.onProgress = (evt)=>{
-              progressHandler(evt);
-              try { prev(evt); } catch(err){ console.warn('PDF.js progress hook error:', err); }
-            };
+
+      const attemptLoading = async(disableWorkers)=>{
+        if (disableWorkers && pdfjsLib){
+          try {
+            if (pdfjsLib.GlobalWorkerOptions){ pdfjsLib.GlobalWorkerOptions.workerSrc = ''; }
+            if (typeof pdfjsLib.disableWorker !== 'undefined'){ pdfjsLib.disableWorker = true; }
+          } catch(err){ console.warn('Nie udało się wyłączyć workera PDF.js', err); }
+        }
+
+        const loadingTask = pdfjsLib.getDocument({ data: buffer });
+        if (loadingTask){
+          const progressHandler = (evt)=>{
+            if (!evt || !evt.total) return;
+            const ratio = Math.max(0, Math.min(1, evt.loaded / evt.total));
+            progress(20 + Math.round(ratio * 40));
+          };
+          try {
+            if ('onProgress' in loadingTask){
+              loadingTask.onProgress = progressHandler;
+            } else if (typeof loadingTask.onProgress === 'function'){
+              const prev = loadingTask.onProgress.bind(loadingTask);
+              loadingTask.onProgress = (evt)=>{
+                progressHandler(evt);
+                try { prev(evt); } catch(err){ console.warn('PDF.js progress hook error:', err); }
+              };
+            }
+          } catch(err){
+            console.warn('Nie udało się ustawić obserwatora progresu PDF.js', err);
           }
+        }
+
+        try {
+          const pdf = await loadingTask.promise;
+          return { pdf, loadingTask };
         } catch(err){
-          console.warn('Nie udało się ustawić obserwatora progresu PDF.js', err);
+          if (typeof loadingTask?.destroy === 'function'){
+            try { await loadingTask.destroy(); } catch(destroyErr){ console.warn('PDF destroy error', destroyErr); }
+          }
+          throw err;
+        }
+      };
+
+      let pdf = null;
+      let loadingTask = null;
+      let workerDisabled = !!(pdfjsLib && pdfjsLib.disableWorker);
+      let lastError = null;
+
+      for (let attempt = 0; attempt < 2; attempt++){
+        const disableWorkers = (attempt === 1);
+        if (disableWorkers){ workerDisabled = true; }
+        try {
+          const result = await attemptLoading(disableWorkers);
+          pdf = result.pdf;
+          loadingTask = result.loadingTask;
+          break;
+        } catch(err){
+          lastError = err;
+          const message = String(err && err.message ? err.message : err || '');
+          const workerHint = /worker/i.test(message) || /Module instantiation/i.test(message);
+          if (attempt === 0){
+            console.warn('PDF.js worker attempt nieudany, próbuję bez workera.', err);
+            if (!workerHint){
+              // Jeśli błąd nie sugeruje problemu z workerem, nadal spróbuj bez workera.
+            }
+            continue;
+          }
         }
       }
-      const pdf = await loadingTask.promise;
+
+      if (!pdf){
+        throw lastError || new Error('Nie udało się wczytać PDF.');
+      }
+
       const totalPages = Number.isFinite(pdf.numPages) && pdf.numPages > 0 ? Math.round(pdf.numPages) : 1;
       progress(65);
       const page = await pdf.getPage(1);
@@ -794,7 +845,7 @@
         heightPx: canvas.height,
         pageCount: totalPages,
         note: totalPages > 1 ? `Strona 1 z ${totalPages}` : '',
-        workerDisabled: !!(pdfjsLib && typeof pdfjsLib.disableWorker !== 'undefined' && pdfjsLib.disableWorker)
+        workerDisabled: workerDisabled
       };
     }
 
