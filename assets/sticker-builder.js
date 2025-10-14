@@ -717,12 +717,25 @@
       const buffer = await file.arrayBuffer();
       progress(20);
       const loadingTask = pdfjsLib.getDocument({ data: buffer });
-      if (loadingTask && typeof loadingTask.onProgress === 'function'){
-        loadingTask.onProgress = (evt)=>{
+      if (loadingTask){
+        const progressHandler = (evt)=>{
           if (!evt || !evt.total) return;
           const ratio = Math.max(0, Math.min(1, evt.loaded / evt.total));
           progress(20 + Math.round(ratio * 40));
         };
+        try {
+          if ('onProgress' in loadingTask){
+            loadingTask.onProgress = progressHandler;
+          } else if (typeof loadingTask.onProgress === 'function'){
+            const prev = loadingTask.onProgress.bind(loadingTask);
+            loadingTask.onProgress = (evt)=>{
+              progressHandler(evt);
+              try { prev(evt); } catch(err){ console.warn('PDF.js progress hook error:', err); }
+            };
+          }
+        } catch(err){
+          console.warn('Nie udało się ustawić obserwatora progresu PDF.js', err);
+        }
       }
       const pdf = await loadingTask.promise;
       const totalPages = Number.isFinite(pdf.numPages) && pdf.numPages > 0 ? Math.round(pdf.numPages) : 1;
