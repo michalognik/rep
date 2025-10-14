@@ -174,6 +174,8 @@
     if (!pdfjsConfig.cdnMainUrl && typeof uploadConfig.pdfjs_cdn_main === 'string'){ pdfjsConfig.cdnMainUrl = uploadConfig.pdfjs_cdn_main; }
     if (!pdfjsConfig.cdnWorkerUrl && typeof uploadConfig.pdfjs_cdn_worker === 'string'){ pdfjsConfig.cdnWorkerUrl = uploadConfig.pdfjs_cdn_worker; }
     const scriptLoadCache = new Map();
+    const PDFJS_MAIN_FALLBACK = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.js';
+    const PDFJS_WORKER_FALLBACK = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.js';
 
     function imageFromDataURL(dataURL){
       return new Promise((resolve, reject)=>{
@@ -185,19 +187,6 @@
         img.onload = ()=> resolve(img);
         img.onerror = (err)=> reject(err || new Error('Nie udało się wczytać obrazu.'));
         img.src = dataURL;
-      });
-    }
-
-    function imageFromURL(url){
-      return new Promise((resolve, reject)=>{
-        if (!url || typeof url !== 'string'){
-          reject(new Error('Brak adresu obrazu.'));
-          return;
-        }
-        const img = new Image();
-        img.onload = ()=> resolve(img);
-        img.onerror = (err)=> reject(err || new Error('Nie udało się wczytać obrazu.'));
-        img.src = url;
       });
     }
 
@@ -285,74 +274,81 @@
       return '';
     }
 
-    function resolveConfiguredWorkerSrc(){
-      if (pdfjsConfig && typeof pdfjsConfig.workerUrl === 'string' && pdfjsConfig.workerUrl){
-        return pdfjsConfig.workerUrl;
+    function resolveConfiguredWorkerSrc(preferredMain){
+      const candidates = [];
+      const push = (val)=>{
+        if (!val || typeof val !== 'string') return;
+        const trimmed = val.trim();
+        if (!trimmed) return;
+        if (!candidates.includes(trimmed)) candidates.push(trimmed);
+      };
+      push(pdfjsConfig && pdfjsConfig.workerUrl);
+      push(pdfjsConfig && pdfjsConfig.cdnWorkerUrl);
+      push(pdfjsConfig && pdfjsConfig.mainUrl ? guessWorkerUrl(pdfjsConfig.mainUrl) : '');
+      push(pdfjsConfig && pdfjsConfig.cdnMainUrl ? guessWorkerUrl(pdfjsConfig.cdnMainUrl) : '');
+      if (preferredMain){ push(guessWorkerUrl(preferredMain)); }
+      push(PDFJS_WORKER_FALLBACK);
+      return candidates.find(Boolean) || '';
+    }
+
+    function configurePdfWorker(lib, loadedMain){
+      if (!lib) return '';
+      const workerSrc = resolveConfiguredWorkerSrc(loadedMain);
+      if (lib.GlobalWorkerOptions){
+        if (workerSrc){
+          try { lib.GlobalWorkerOptions.workerSrc = workerSrc; } catch(err){ console.warn(err); }
+          if (typeof lib.disableWorker !== 'undefined'){ lib.disableWorker = false; }
+        } else if (typeof lib.disableWorker !== 'undefined'){
+          lib.disableWorker = true;
+        }
+      } else if (workerSrc){
+        lib.workerSrc = workerSrc;
       }
-      if (pdfjsConfig && typeof pdfjsConfig.cdnWorkerUrl === 'string' && pdfjsConfig.cdnWorkerUrl){
-        return pdfjsConfig.cdnWorkerUrl;
-      }
-      if (pdfjsConfig && typeof pdfjsConfig.mainUrl === 'string'){
-        return guessWorkerUrl(pdfjsConfig.mainUrl);
-      }
-      return '';
+      return workerSrc;
     }
 
     async function ensurePdfJs(){
       const existing = pickPdfGlobal();
       if (existing){
-        if (existing.GlobalWorkerOptions){
-          const workerSrc = resolveConfiguredWorkerSrc();
-          if (workerSrc){
-            existing.GlobalWorkerOptions.workerSrc = workerSrc;
-            if (typeof existing.disableWorker !== 'undefined'){ existing.disableWorker = false; }
-          } else if (typeof existing.disableWorker !== 'undefined'){
-            existing.disableWorker = true;
-          }
-        }
-        return true;
+        configurePdfWorker(existing);
+        return existing;
       }
-      if (pdfjsEnsurePromise){ return pdfjsEnsurePromise; }
-      pdfjsEnsurePromise = (async()=>{
-        const sources = [];
-        if (pdfjsConfig && typeof pdfjsConfig.mainUrl === 'string' && pdfjsConfig.mainUrl){ sources.push(pdfjsConfig.mainUrl); }
-        if (pdfjsConfig && typeof pdfjsConfig.cdnMainUrl === 'string' && pdfjsConfig.cdnMainUrl && !sources.includes(pdfjsConfig.cdnMainUrl)){
-          sources.push(pdfjsConfig.cdnMainUrl);
-        }
-        for (const src of sources){
-          try{
-            await loadScriptOnce(src);
-            if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function'){
-              break;
+      if (!pdfjsEnsurePromise){
+        pdfjsEnsurePromise = (async()=>{
+          const sources = [];
+          const push = (val)=>{
+            if (!val || typeof val !== 'string') return;
+            const trimmed = val.trim();
+            if (!trimmed) return;
+            if (!sources.includes(trimmed)) sources.push(trimmed);
+          };
+          push(pdfjsConfig && pdfjsConfig.mainUrl);
+          push(pdfjsConfig && pdfjsConfig.cdnMainUrl);
+          push(PDFJS_MAIN_FALLBACK);
+          let lastError = null;
+          for (const src of sources){
+            try{
+              await loadScriptOnce(src);
+            }catch(err){
+              lastError = err;
+              continue;
             }
-          }catch(err){
-            console.warn(err);
+            const lib = pickPdfGlobal();
+            if (lib && typeof lib.getDocument === 'function'){
+              configurePdfWorker(lib, src);
+              return lib;
+            }
           }
-        }
-        const lib = pickPdfGlobal();
-        const ready = !!(lib && typeof lib.getDocument === 'function');
-        if (ready && lib.GlobalWorkerOptions){
-          const workerSrc = resolveConfiguredWorkerSrc();
-          if (workerSrc){
-            lib.GlobalWorkerOptions.workerSrc = workerSrc;
-            if (typeof lib.disableWorker !== 'undefined'){ lib.disableWorker = false; }
-          } else if (typeof lib.disableWorker !== 'undefined'){
-            lib.disableWorker = true;
+          const lib = pickPdfGlobal();
+          if (lib && typeof lib.getDocument === 'function'){
+            configurePdfWorker(lib);
+            return lib;
           }
-        }
-        return ready;
-      })();
-      try{
-        const ok = await pdfjsEnsurePromise;
-        if (!ok){
-          pdfjsEnsurePromise = null;
-        }
-        return ok;
-      }catch(err){
-        pdfjsEnsurePromise = null;
-        console.error('ensurePdfJs error:', err);
-        return false;
+          if (lastError){ throw lastError; }
+          throw new Error('Nie udało się załadować PDF.js');
+        })().catch(err=>{ pdfjsEnsurePromise = null; console.error('ensurePdfJs error:', err); throw err; });
       }
+      return pdfjsEnsurePromise;
     }
     if (!disallowedExtSet.size){
       ['svg','svgz','zip','rar','7z','php','phtml','phar','js','cgi','pl','asp','aspx'].forEach(ext => disallowedExtSet.add(ext));
@@ -708,6 +704,86 @@
     }
     function showPdfProgress(show){ ensurePdfProgressUI(); if (pdfProgWrap) pdfProgWrap.style.display = show ? 'inline-flex' : 'none'; }
     function setPdfProgress(p){ ensurePdfProgressUI(); const v = Math.max(0, Math.min(100, Math.round(p))); if (pdfProgBar) pdfProgBar.style.width = v + '%'; if (pdfProgPct) pdfProgPct.textContent = v + '%'; }
+
+    async function renderPdfPreviewFromFile(file, { onProgress } = {}){
+      if (!file){ throw new Error('Brak pliku PDF.'); }
+      const progress = typeof onProgress === 'function' ? onProgress : ()=>{};
+      progress(5);
+      const pdfjsLib = await ensurePdfJs();
+      if (!pdfjsLib || typeof pdfjsLib.getDocument !== 'function'){
+        throw new Error('Nie udało się zainicjować PDF.js.');
+      }
+      progress(12);
+      const buffer = await file.arrayBuffer();
+      progress(20);
+      const loadingTask = pdfjsLib.getDocument({ data: buffer });
+      if (loadingTask && typeof loadingTask.onProgress === 'function'){
+        loadingTask.onProgress = (evt)=>{
+          if (!evt || !evt.total) return;
+          const ratio = Math.max(0, Math.min(1, evt.loaded / evt.total));
+          progress(20 + Math.round(ratio * 40));
+        };
+      }
+      const pdf = await loadingTask.promise;
+      const totalPages = Number.isFinite(pdf.numPages) && pdf.numPages > 0 ? Math.round(pdf.numPages) : 1;
+      progress(65);
+      const page = await pdf.getPage(1);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const maxDim = 2048;
+      const scale = (()=>{
+        const maxSide = Math.max(baseViewport.width, baseViewport.height);
+        if (!maxSide || !Number.isFinite(maxSide)) return 1.5;
+        const target = maxDim / maxSide;
+        const clamped = Math.max(1, Math.min(3, target));
+        return clamped;
+      })();
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(viewport.width));
+      canvas.height = Math.max(1, Math.round(viewport.height));
+      const ctx2d = canvas.getContext('2d', { willReadFrequently:false });
+      await page.render({ canvasContext: ctx2d, viewport }).promise;
+      progress(88);
+      try{ if (typeof page.cleanup === 'function'){ page.cleanup(); } }catch(_err){}
+      try{ if (typeof pdf.cleanup === 'function'){ pdf.cleanup(); } }catch(_err){}
+      let dataURL = '';
+      try{
+        dataURL = canvas.toDataURL('image/png');
+      }catch(err){
+        console.warn('PDF canvas toDataURL failed:', err);
+        dataURL = '';
+      }
+      let previewImage = null;
+      if (dataURL){
+        try {
+          previewImage = await imageFromDataURL(dataURL);
+        } catch(err){
+          console.warn('PDF preview image decode failed:', err);
+        }
+      }
+      if (!previewImage){
+        try {
+          const fallbackUrl = dataURL && dataURL.length ? dataURL : canvas.toDataURL('image/png');
+          previewImage = await imageFromDataURL(fallbackUrl);
+          if (!dataURL) dataURL = fallbackUrl;
+        } catch(err){
+          previewImage = null;
+        }
+      }
+      if (!previewImage){
+        throw new Error('Nie udało się przygotować podglądu PDF.');
+      }
+      progress(100);
+      return {
+        previewImage,
+        previewDataURL: dataURL || null,
+        widthPx: canvas.width,
+        heightPx: canvas.height,
+        pageCount: totalPages,
+        note: totalPages > 1 ? `Strona 1 z ${totalPages}` : '',
+        workerDisabled: !!(pdfjsLib && typeof pdfjsLib.disableWorker !== 'undefined' && pdfjsLib.disableWorker)
+      };
+    }
 
     // Mini summary
     const sumDims = byId('sum-dims');
@@ -2264,157 +2340,26 @@
       };
 
       if (isPDF){
+        showPdfProgress(true);
+        setPdfProgress(4);
         try{
-          const pdfReady = await ensurePdfJs();
-          if (!pdfReady){
-            throw new Error('Nie udało się załadować biblioteki PDF.js.');
-          }
-          const pdfjsLib = window.pdfjsLib;
-          if (!pdfjsLib || typeof pdfjsLib.getDocument !== 'function'){
-            throw new Error('Biblioteka PDF.js nie została zainicjalizowana.');
-          }
-
-          const workerSrc = resolveConfiguredWorkerSrc();
-          const fileBuffer = new Uint8Array(await f.arrayBuffer());
-
-          const renderAttempt = async (forceDisableWorker)=>{
-            if (pdfjsLib.GlobalWorkerOptions){
-              if (forceDisableWorker){
-                try{ pdfjsLib.GlobalWorkerOptions.workerSrc = ''; }catch(_){ /* noop */ }
-                if (typeof pdfjsLib.GlobalWorkerOptions.workerPort !== 'undefined'){
-                  try{ pdfjsLib.GlobalWorkerOptions.workerPort = null; }catch(_){ /* noop */ }
-                }
-              } else if (workerSrc){
-                pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-              }
-            }
-            if (typeof pdfjsLib.disableWorker !== 'undefined'){
-              pdfjsLib.disableWorker = !!forceDisableWorker;
-            }
-
-            const pdfTask = pdfjsLib.getDocument({ data: fileBuffer });
-            const pdf = await pdfTask.promise;
-            const page = await pdf.getPage(1);
-            const viewport = page.getViewport({ scale: 2 });
-            const c = document.createElement('canvas');
-            c.width  = Math.max(1, Math.ceil(viewport.width));
-            c.height = Math.max(1, Math.ceil(viewport.height));
-            const cctx = c.getContext('2d');
-            await page.render({ canvasContext: cctx, viewport }).promise;
-
-            if (typeof page.cleanup === 'function'){ try{ page.cleanup(); }catch(_){ /* noop */ } }
-
-            const pageCount = pdf.numPages || 1;
-            if (typeof pdf.cleanup === 'function'){ try{ pdf.cleanup(); }catch(_){ /* noop */ } }
-
-            let previewSource = c;
-            if (typeof window.createImageBitmap === 'function'){
-              try{
-                previewSource = await window.createImageBitmap(c);
-              }catch(bitmapErr){
-                console.warn('createImageBitmap failed, falling back to canvas preview.', bitmapErr);
-                previewSource = c;
-              }
-            }
-
-            let dataURL = '';
-            try{
-              dataURL = c.toDataURL('image/png');
-            }catch(toDataUrlErr){
-              console.warn('PDF preview data URL failed:', toDataUrlErr);
-            }
-
-            return {
-              previewSource,
-              dataURL,
-              pxW: c.width,
-              pxH: c.height,
-              pageCount
-            };
-          };
-
-          let rendered = null;
-          let workerRetried = false;
-          try{
-            rendered = await renderAttempt(false);
-          }catch(err){
-            const errMsg = (err && err.message) ? String(err.message) : String(err);
-            const workerRelated = /worker/i.test(errMsg || '') || (err && err.name && /worker/i.test(String(err.name)));
-            if (workerRelated){
-              workerRetried = true;
-              console.warn('PDF preview worker error, ponawiam bez workera…', err);
-              rendered = await renderAttempt(true);
-            } else {
-              throw err;
-            }
-          }
-
-          if (!rendered){
-            throw new Error('Nie udało się wyrenderować PDF.');
-          }
-
-          const { previewSource, dataURL, pxW, pxH, pageCount } = rendered;
-
-          let previewDataURL = dataURL || '';
-          if (!previewDataURL && previewSource){
-            try {
-              const cv = document.createElement('canvas');
-              const w = Math.max(1, Math.round(pxW || previewSource.width || previewSource.naturalWidth || previewSource.videoWidth || 0));
-              const h = Math.max(1, Math.round(pxH || previewSource.height || previewSource.naturalHeight || previewSource.videoHeight || 0));
-              cv.width = w;
-              cv.height = h;
-              const cctx2 = cv.getContext('2d');
-              cctx2.drawImage(previewSource, 0, 0, w, h);
-              previewDataURL = cv.toDataURL('image/png');
-            } catch(err){
-              console.warn('PDF preview fallback dataURL failed:', err);
-            }
-          }
-
-          let previewImage = null;
-          if (previewDataURL){
-            try {
-              previewImage = await imageFromDataURL(previewDataURL);
-            } catch(err){
-              console.warn('PDF preview image decode failed:', err);
-              previewImage = null;
-            }
-          }
-          if (!previewImage && previewSource){
-            try {
-              const cv = document.createElement('canvas');
-              const w = Math.max(1, Math.round(pxW || previewSource.width || previewSource.naturalWidth || previewSource.videoWidth || 0));
-              const h = Math.max(1, Math.round(pxH || previewSource.height || previewSource.naturalHeight || previewSource.videoHeight || 0));
-              cv.width = w;
-              cv.height = h;
-              const cctx2 = cv.getContext('2d');
-              cctx2.drawImage(previewSource, 0, 0, w, h);
-              const fallbackUrl = cv.toDataURL('image/png');
-              previewDataURL = previewDataURL || fallbackUrl;
-              previewImage = await imageFromDataURL(fallbackUrl);
-            } catch(err){
-              console.warn('PDF preview fallback decode failed:', err);
-              previewImage = null;
-            }
-          }
-
-          if (!previewImage){
-            throw new Error('Nie udało się przygotować podglądu PDF.');
-          }
-
+          const rendered = await renderPdfPreviewFromFile(f, { onProgress: setPdfProgress });
           finalizePdfUpload({
-            previewImage,
-            previewDataURL,
-            pxW,
-            pxH,
-            pageCount,
-            workerDisabled: workerRetried,
-            note: null,
+            previewImage: rendered.previewImage,
+            previewDataURL: rendered.previewDataURL,
+            pxW: rendered.widthPx,
+            pxH: rendered.heightPx,
+            pageCount: rendered.pageCount,
+            workerDisabled: rendered.workerDisabled,
+            note: rendered.note,
           });
         }catch(err){
           console.error('PDF preview error:', err);
           uploadMessage('Nie udało się przygotować podglądu PDF. Sprawdź plik lub prześlij go jako PNG.');
           clearImage({ keepSummary:true });
+        }finally{
+          showPdfProgress(false);
+          setPdfProgress(0);
         }
         return;
       }
