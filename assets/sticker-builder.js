@@ -188,6 +188,19 @@
       });
     }
 
+    function imageFromURL(url){
+      return new Promise((resolve, reject)=>{
+        if (!url || typeof url !== 'string'){
+          reject(new Error('Brak adresu obrazu.'));
+          return;
+        }
+        const img = new Image();
+        img.onload = ()=> resolve(img);
+        img.onerror = (err)=> reject(err || new Error('Nie udało się wczytać obrazu.'));
+        img.src = url;
+      });
+    }
+
     function sourcePixelWidth(src){
       if (!src) return 0;
       if (typeof src.naturalWidth === 'number' && src.naturalWidth > 0){ return src.naturalWidth; }
@@ -347,6 +360,12 @@
 
     const PDFLib = window.PDFLib || null;         // eksport PDF
     const QRCodeLib = window.QRCode || null;      // davidshimjs
+
+    const pdfSummaryLabel = (meta)=>{
+      if (!meta || typeof meta !== 'object'){ return ''; }
+      const pages = Number.isFinite(meta.numPages) && meta.numPages > 0 ? Math.round(meta.numPages) : 0;
+      return pages > 0 ? `PDF • ${pages} str.` : 'PDF';
+    };
 
     /* ===== Shortcuts ===== */
     const $  = (sel, root=document) => root.querySelector(sel);
@@ -586,6 +605,10 @@
               size: Number.isFinite(Number(data.size)) ? Number(data.size) : (file?.size || 0),
               type: typeof data.type === 'string' ? data.type : (file?.type || ''),
               name: typeof data.name === 'string' ? data.name : (file?.name || ''),
+              previewUrl: typeof data.preview_url === 'string' ? data.preview_url : '',
+              previewWidth: Number.isFinite(Number(data.preview_width)) ? Number(data.preview_width) : 0,
+              previewHeight: Number.isFinite(Number(data.preview_height)) ? Number(data.preview_height) : 0,
+              pageCount: Number.isFinite(Number(data.page_count)) ? Number(data.page_count) : 0,
             });
             return;
           }
@@ -2206,6 +2229,11 @@
       const uploadedId   = uploadInfo.uploadId || 0;
       const serverName   = (uploadInfo && uploadInfo.name) ? String(uploadInfo.name) : '';
       const finalName    = serverName || name || '';
+      const serverPreviewUrl = uploadInfo.previewUrl || '';
+      const serverPreviewWidth = Number.isFinite(uploadInfo.previewWidth) ? uploadInfo.previewWidth : 0;
+      const serverPreviewHeight = Number.isFinite(uploadInfo.previewHeight) ? uploadInfo.previewHeight : 0;
+      const serverPageCount = Number.isFinite(uploadInfo.pageCount) ? Math.round(uploadInfo.pageCount) : 0;
+      const fallbackPageCount = serverPageCount > 0 ? serverPageCount : 0;
 
       if (uploadSummary){
         const label = finalName || 'Plik';
@@ -2214,35 +2242,110 @@
 
       if (fName) fName.textContent = finalName || 'brak pliku';
 
+      const loadServerPreview = async ()=>{
+        if (!serverPreviewUrl){ return null; }
+        try {
+          const img = await imageFromURL(serverPreviewUrl);
+          const pxW = Math.max(1, Math.round(serverPreviewWidth || sourcePixelWidth(img)));
+          const pxH = Math.max(1, Math.round(serverPreviewHeight || sourcePixelHeight(img)));
+          let previewDataURL = '';
+          try {
+            const cv = document.createElement('canvas');
+            cv.width = pxW;
+            cv.height = pxH;
+            const cctx2 = cv.getContext('2d');
+            cctx2.drawImage(img, 0, 0, pxW, pxH);
+            previewDataURL = cv.toDataURL('image/png');
+          } catch(err){
+            console.warn('Server preview dataURL failed:', err);
+          }
+          return { previewImage: img, previewDataURL, pxW, pxH };
+        } catch(err){
+          console.warn('Server PDF preview load failed:', err);
+          return null;
+        }
+      };
+
+      const finalizePdfUpload = ({ previewImage, previewDataURL, pxW, pxH, pageCount, workerDisabled, note, serverPreview })=>{
+        if (!previewImage){ throw new Error('Brak obrazu podglądu PDF.'); }
+        const widthPx = Math.max(1, Math.round(pxW || sourcePixelWidth(previewImage)));
+        const heightPx = Math.max(1, Math.round(pxH || sourcePixelHeight(previewImage)));
+        const resolvedPages = Number.isFinite(pageCount) && pageCount > 0 ? Math.round(pageCount) : fallbackPageCount;
+        const pdfMeta = {
+          workerDisabled: !!workerDisabled,
+        };
+        if (resolvedPages > 0){ pdfMeta.numPages = resolvedPages; }
+        if (serverPreview){ pdfMeta.serverPreview = true; }
+        uploaded = {
+          name: finalName,
+          type:(uploadedType || 'application/pdf'),
+          size:uploadedSize,
+          dataURL: previewDataURL || null,
+          img: previewImage,
+          pdf: pdfMeta,
+          uploadId:uploadedId,
+          url:uploadedUrl,
+          uploadBytes:uploadedSize
+        };
+        if (fName) fName.textContent = finalName || 'brak pliku';
+        const initScale = initialImageScale(uploaded.img);
+        transform = { scale:initScale, offsetX:0, offsetY:0, rotDeg:0 };
+        const label = note || pdfSummaryLabel(uploaded.pdf);
+        updateFileMeta(widthPx, heightPx, (uploadedType || 'application/pdf'), uploadedSize, label);
+        setToolTarget('image');
+        requestDraw();
+        updatePriceAndJSON();
+      };
+
+      const attemptServerPreview = async (noteOverride)=>{
+        const preview = await loadServerPreview();
+        if (!preview){ return false; }
+        finalizePdfUpload({
+          previewImage: preview.previewImage,
+          previewDataURL: preview.previewDataURL,
+          pxW: preview.pxW,
+          pxH: preview.pxH,
+          pageCount: fallbackPageCount,
+          workerDisabled: true,
+          note: noteOverride,
+          serverPreview: true,
+        });
+        return true;
+      };
+
       let pdfReady = false;
       if (isPDF){
         pdfReady = await ensurePdfJs();
       }
 
       if (isPDF && !pdfReady){
-        uploaded = {
-          name: finalName,
-          type:(uploadedType || 'application/pdf'),
-          size:uploadedSize,
-          dataURL:null,
-          img:null,
-          pdf:null,
-          uploadId:uploadedId,
-          url:uploadedUrl,
-          uploadBytes:uploadedSize
-        };
-        if (fName) fName.textContent = finalName || 'brak pliku';
-        transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
-        updateFileMeta(
-          0,
-          0,
-          (uploadedType || 'application/pdf'),
-          uploadedSize,
-          'Nie udało się załadować biblioteki podglądu PDF.'
-        );
-        setToolTarget(null);
-        requestDraw();
-        updatePriceAndJSON();
+        const note = fallbackPageCount > 0 ? `PDF • ${fallbackPageCount} str.` : 'PDF';
+        const usedServerPreview = await attemptServerPreview(note);
+        if (!usedServerPreview){
+          uploaded = {
+            name: finalName,
+            type:(uploadedType || 'application/pdf'),
+            size:uploadedSize,
+            dataURL:null,
+            img:null,
+            pdf:null,
+            uploadId:uploadedId,
+            url:uploadedUrl,
+            uploadBytes:uploadedSize
+          };
+          if (fName) fName.textContent = finalName || 'brak pliku';
+          transform = { scale:1, offsetX:0, offsetY:0, rotDeg:0 };
+          updateFileMeta(
+            0,
+            0,
+            (uploadedType || 'application/pdf'),
+            uploadedSize,
+            'Brak podglądu PDF (nie udało się załadować biblioteki ani miniatury).'
+          );
+          setToolTarget(null);
+          requestDraw();
+          updatePriceAndJSON();
+        }
         return;
       }
 
@@ -2380,28 +2483,24 @@
             throw new Error('Nie udało się przygotować podglądu PDF.');
           }
 
-          uploaded = {
-            name: finalName,
-            type:(uploadedType || 'application/pdf'),
-            size:uploadedSize,
-            dataURL: previewDataURL || null,
-            img: previewImage,
-            pdf:{ numPages: pageCount, workerDisabled: workerRetried },
-            uploadId:uploadedId,
-            url:uploadedUrl,
-            uploadBytes:uploadedSize
-          };
-          if (fName) fName.textContent = finalName || 'brak pliku';
-          const initScale = initialImageScale(uploaded.img);
-          transform = { scale:initScale, offsetX:0, offsetY:0, rotDeg:0 };
-          updateFileMeta(pxW, pxH, (uploadedType || 'application/pdf'), uploadedSize, `PDF • ${pageCount} str.`);
-          setToolTarget('image');
-          requestDraw();
-          updatePriceAndJSON();
+          finalizePdfUpload({
+            previewImage,
+            previewDataURL,
+            pxW,
+            pxH,
+            pageCount,
+            workerDisabled: workerRetried,
+            note: null,
+            serverPreview: false,
+          });
         }catch(err){
           console.error('PDF preview error:', err);
-          alert('Nie udało się wczytać PDF (szczegóły w konsoli).');
-          clearImage();
+          const note = fallbackPageCount > 0 ? `PDF • ${fallbackPageCount} str.` : 'PDF';
+          const usedServerPreview = await attemptServerPreview(note);
+          if (!usedServerPreview){
+            alert('Nie udało się wczytać PDF (szczegóły w konsoli).');
+            clearImage();
+          }
         }
         return;
       }
@@ -3362,7 +3461,7 @@
       if (hEl) hEl.value = String(parseFloat(item.getAttribute('data-h')) || 10);
       if (uploaded.img){
         updateFileMeta(sourcePixelWidth(uploaded.img), sourcePixelHeight(uploaded.img), uploaded.type, uploaded.size,
-          uploaded.pdf ? `PDF • ${(uploaded.pdf.numPages||1)} str.` : '');
+          uploaded.pdf ? pdfSummaryLabel(uploaded.pdf) : '');
       }
       rebuildQR(); requestDraw();
     });
@@ -3376,7 +3475,7 @@
       if (e.target.matches('input')){
         if (uploaded.img){
           updateFileMeta(sourcePixelWidth(uploaded.img), sourcePixelHeight(uploaded.img), uploaded.type, uploaded.size,
-            uploaded.pdf ? `PDF • ${(uploaded.pdf.numPages||1)} str.` : '');
+            uploaded.pdf ? pdfSummaryLabel(uploaded.pdf) : '');
         }
         rebuildQR(); requestDraw();
       }
@@ -3469,7 +3568,7 @@
       if (sizeList){ $$('.opt-item[data-w]', sizeList).forEach(b=>b.setAttribute('aria-pressed','false')); }
       if (uploaded.img){
         updateFileMeta(sourcePixelWidth(uploaded.img), sourcePixelHeight(uploaded.img), uploaded.type, uploaded.size,
-          uploaded.pdf ? `PDF • ${(uploaded.pdf.numPages||1)} str.` : '');
+          uploaded.pdf ? pdfSummaryLabel(uploaded.pdf) : '');
       }
       rebuildQR(); requestDraw();
     };
