@@ -1,185 +1,135 @@
 <?php
 /**
  * Plugin Name: Ognik – PDF preview for kreator
- * Description: Renderuje podgląd pierwszej strony PDF w kreatorze (canvas) przy uploadzie.
- * Version: 1.0.0
+ * Description: Wyświetla prosty podgląd wybranego PDF w kreatorze bez wysyłania pliku na serwer.
+ * Version: 1.1.0
  */
-if (!defined('ABSPATH')) { exit; }
 
-if (!defined('OGNIK_PDFJS_VERSION')) {
-    define('OGNIK_PDFJS_VERSION', '4.6.82');
-}
-
-if (!defined('OGNIK_PDFJS_BASE')) {
-    define('OGNIK_PDFJS_BASE', 'https://cdn.jsdelivr.net/npm/pdfjs-dist@' . OGNIK_PDFJS_VERSION . '/build/');
+if (!defined('ABSPATH')) {
+    exit;
 }
 
 function ognik_pdf_preview_enqueue_scripts() {
-    static $enqueued = false;
-    if ($enqueued) {
-        return;
-    }
-
-    wp_enqueue_script(
-        'ognik-pdfjs',
-        OGNIK_PDFJS_BASE . 'pdf.min.js',
-        [],
-        OGNIK_PDFJS_VERSION,
-        true
-    );
-
-    $worker_inline = 'if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {'
-        . 'window.pdfjsLib.GlobalWorkerOptions.workerSrc = "' . OGNIK_PDFJS_BASE . 'pdf.worker.min.js";' 
-        . '}';
-    wp_add_inline_script('ognik-pdfjs', $worker_inline, 'after');
-
-    wp_register_script('ognik-pdf-preview', '', ['ognik-pdfjs'], '1.0.0', true);
-    wp_enqueue_script('ognik-pdf-preview');
+    wp_register_script('ognik-pdf-preview-simple', '', [], '1.0.0', true);
+    wp_enqueue_script('ognik-pdf-preview-simple');
 
     $inline = <<<'JS'
 (function () {
-  if (window.__ognikPdfPreviewInitialized) {
+  if (window.__ognikSimplePdfPreviewInitialized) {
     return;
   }
-  window.__ognikPdfPreviewInitialized = true;
+  window.__ognikSimplePdfPreviewInitialized = true;
 
-  function hasPdfJs() {
-    return typeof window.pdfjsLib !== 'undefined';
-  }
+  const previews = new WeakMap();
 
   function isPdf(file) {
-    return file && (
+    return !!file && (
       file.type === 'application/pdf' ||
       (file.name && file.name.toLowerCase().endsWith('.pdf'))
     );
   }
 
-  function ensurePreviewHost() {
-    let host = document.getElementById('ognik-pdf-preview');
-    if (!host) {
-      host = document.createElement('div');
-      host.id = 'ognik-pdf-preview';
-      host.style.marginTop = '12px';
-      host.style.display = 'flex';
-      host.style.flexDirection = 'column';
-      host.style.gap = '8px';
+  function createContainer(input) {
+    const wrapper = document.createElement('div');
+    wrapper.style.marginTop = '16px';
+    wrapper.style.padding = '12px';
+    wrapper.style.border = '1px solid #ddd';
+    wrapper.style.background = '#fafafa';
+    wrapper.style.borderRadius = '4px';
+    wrapper.style.display = 'flex';
+    wrapper.style.flexDirection = 'column';
+    wrapper.style.gap = '8px';
 
-      const knownHosts = document.querySelectorAll('[data-kreator], .kreator, .designer, .canvas, #canvas, .product-designer, .fpd-container');
-      if (knownHosts.length && knownHosts[0].parentNode) {
-        knownHosts[0].parentNode.insertBefore(host, knownHosts[0]);
-      } else {
-        (document.body || document.documentElement).appendChild(host);
-      }
+    const title = document.createElement('div');
+    title.textContent = 'Podgląd PDF';
+    title.style.fontWeight = '600';
+    wrapper.appendChild(title);
 
-      const title = document.createElement('div');
-      title.textContent = 'Podgląd PDF (strona 1)';
-      title.style.fontWeight = '600';
-      title.style.fontSize = '14px';
-      host.appendChild(title);
+    const frame = document.createElement('embed');
+    frame.type = 'application/pdf';
+    frame.style.width = '100%';
+    frame.style.minHeight = '360px';
+    frame.style.border = '1px solid #ccc';
+    frame.style.backgroundColor = '#fff';
+    wrapper.appendChild(frame);
 
-      const info = document.createElement('div');
-      info.id = 'ognik-pdf-info';
-      info.style.fontSize = '12px';
-      info.style.opacity = '0.8';
-      info.textContent = 'Jeśli PDF jest wielostronicowy, pokazujemy pierwszą stronę.';
-      host.appendChild(info);
+    const info = document.createElement('div');
+    info.style.fontSize = '12px';
+    info.style.opacity = '0.75';
+    info.textContent = 'Wybierz plik PDF, aby zobaczyć jego podgląd (pliku nie wysyłamy na serwer).';
+    wrapper.appendChild(info);
 
-      const canvas = document.createElement('canvas');
-      canvas.id = 'ognik-pdf-canvas';
-      canvas.style.maxWidth = '100%';
-      canvas.style.border = '1px dashed #ddd';
-      canvas.style.background = '#fff';
-      host.appendChild(canvas);
+    if (input.parentNode) {
+      input.parentNode.insertBefore(wrapper, input.nextSibling);
+    } else {
+      input.insertAdjacentElement('afterend', wrapper);
     }
-    return host;
+
+    const state = { wrapper, frame, info, url: null };
+    previews.set(input, state);
+    return state;
   }
 
-  async function renderPdfFirstPage(file) {
-    if (!hasPdfJs()) {
+  function ensureContainer(input) {
+    let state = previews.get(input);
+    if (!state || !state.wrapper.isConnected) {
+      state = createContainer(input);
+    }
+    return state;
+  }
+
+  function updateInfo(state, message) {
+    if (state && state.info) {
+      state.info.textContent = message;
+    }
+  }
+
+  function clearPreview(state, message) {
+    if (!state) {
+      return;
+    }
+    if (state.frame) {
+      state.frame.removeAttribute('src');
+    }
+    if (state.url) {
+      URL.revokeObjectURL(state.url);
+      state.url = null;
+    }
+    updateInfo(state, message || 'Wybierz plik PDF, aby zobaczyć jego podgląd (pliku nie wysyłamy na serwer).');
+  }
+
+  function showPreview(input, file) {
+    const state = ensureContainer(input);
+    clearPreview(state);
+    if (!file) {
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    state.url = url;
+    state.frame.src = url;
+    updateInfo(state, 'Podgląd został wygenerowany lokalnie — plik nie został wysłany na serwer.');
+  }
+
+  document.addEventListener('change', function (event) {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement) || input.type !== 'file') {
       return;
     }
 
-    ensurePreviewHost();
-    const canvas = document.getElementById('ognik-pdf-canvas');
-    const info = document.getElementById('ognik-pdf-info');
-    if (!canvas) {
-      return;
+    const file = input.files && input.files[0];
+    const state = ensureContainer(input);
+
+    if (file && isPdf(file)) {
+      showPreview(input, file);
+    } else {
+      clearPreview(state, file ? 'Wybrany plik nie jest w formacie PDF.' : 'Wybierz plik PDF, aby zobaczyć jego podgląd (pliku nie wysyłamy na serwer).');
     }
-
-    try {
-      const ctx = canvas.getContext('2d');
-      const buf = await file.arrayBuffer();
-      const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
-      const page = await pdf.getPage(1);
-
-      const desiredWidth = Math.min(1000, (window.innerWidth || 0) - 48 || 640);
-      const viewport = page.getViewport({ scale: 1.0 });
-      const scale = desiredWidth > 0 ? (desiredWidth / viewport.width) : 1;
-      const scaledViewport = page.getViewport({ scale: scale > 0 ? scale : 1 });
-
-      canvas.width = scaledViewport.width | 0;
-      canvas.height = scaledViewport.height | 0;
-
-      await page.render({ canvasContext: ctx, viewport: scaledViewport }).promise;
-
-      if (info) {
-        info.textContent = 'Podgląd wygenerowany z PDF (strona 1).';
-      }
-    } catch (error) {
-      console.error('Ognik PDF preview error:', error);
-      if (info) {
-        info.textContent = 'Nie udało się wygenerować podglądu PDF. Sprawdź czy plik nie jest szyfrowany i nie jest zbyt duży.';
-      }
-    }
-  }
-
-  function attachListeners(root) {
-    const scope = root || document;
-    if (!scope || !scope.querySelectorAll) {
-      return;
-    }
-    scope.querySelectorAll('input[type="file"]').forEach(function (input) {
-      if (input.__ognikPdfHooked) {
-        return;
-      }
-      input.__ognikPdfHooked = true;
-      input.addEventListener('change', function (event) {
-        const target = event && event.target;
-        const file = target && target.files && target.files[0];
-        if (isPdf(file)) {
-          renderPdfFirstPage(file);
-        }
-      });
-    });
-  }
-
-  function init() {
-    attachListeners(document);
-    const observer = new MutationObserver(function (mutations) {
-      mutations.forEach(function (mutation) {
-        mutation.addedNodes && mutation.addedNodes.forEach(function (node) {
-          if (node && node.nodeType === 1) {
-            attachListeners(node);
-          }
-        });
-      });
-    });
-    observer.observe(document.documentElement, { childList: true, subtree: true });
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  });
 })();
 JS;
 
-    wp_add_inline_script('ognik-pdf-preview', $inline);
-
-    $enqueued = true;
+    wp_add_inline_script('ognik-pdf-preview-simple', $inline);
 }
 
 add_action('wp_enqueue_scripts', 'ognik_pdf_preview_enqueue_scripts');
 add_action('admin_enqueue_scripts', 'ognik_pdf_preview_enqueue_scripts');
-
