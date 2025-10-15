@@ -291,6 +291,8 @@
       return candidates.find(Boolean) || '';
     }
 
+    const PDF_RENDER_TIMEOUT_MS = 10000;
+
     function configurePdfWorker(lib, loadedMain){
       if (!lib) return '';
       const workerSrc = resolveConfiguredWorkerSrc(loadedMain);
@@ -705,6 +707,31 @@
     function showPdfProgress(show){ ensurePdfProgressUI(); if (pdfProgWrap) pdfProgWrap.style.display = show ? 'inline-flex' : 'none'; }
     function setPdfProgress(p){ ensurePdfProgressUI(); const v = Math.max(0, Math.min(100, Math.round(p))); if (pdfProgBar) pdfProgBar.style.width = v + '%'; if (pdfProgPct) pdfProgPct.textContent = v + '%'; }
 
+    function waitWithTimeout(promise, ms, message){
+      const numeric = Number(ms);
+      const timeout = (Number.isFinite(numeric) && numeric > 0) ? numeric : 0;
+      if (!timeout){ return promise; }
+      let timer = null;
+      const clear = ()=>{
+        if (timer !== null){
+          window.clearTimeout(timer);
+          timer = null;
+        }
+      };
+      const timeoutPromise = new Promise((_, reject)=>{
+        timer = window.setTimeout(()=>{
+          const err = new Error(message || 'PDF render timeout');
+          err.__stbPdfTimeout = true;
+          clear();
+          reject(err);
+        }, timeout);
+      });
+      return Promise.race([
+        promise.then((value)=>{ clear(); return value; }, (err)=>{ clear(); throw err; }),
+        timeoutPromise
+      ]);
+    }
+
     async function renderPdfPreviewFromFile(file, { onProgress } = {}){
       if (!file){ throw new Error('Brak pliku PDF.'); }
       const progress = typeof onProgress === 'function' ? onProgress : ()=>{};
@@ -723,9 +750,17 @@
             if (pdfjsLib.GlobalWorkerOptions){ pdfjsLib.GlobalWorkerOptions.workerSrc = ''; }
             if (typeof pdfjsLib.disableWorker !== 'undefined'){ pdfjsLib.disableWorker = true; }
           } catch(err){ console.warn('Nie udało się wyłączyć workera PDF.js', err); }
+        } else if (pdfjsLib && typeof pdfjsLib.disableWorker !== 'undefined'){
+          pdfjsLib.disableWorker = false;
         }
 
-        const loadingTask = pdfjsLib.getDocument({ data: buffer });
+        const loadOptions = { data: buffer };
+        if (disableWorkers){
+          loadOptions.disableWorker = true;
+          loadOptions.useWorker = false;
+        }
+
+        const loadingTask = pdfjsLib.getDocument(loadOptions);
         if (loadingTask){
           const progressHandler = (evt)=>{
             if (!evt || !evt.total) return;
@@ -748,7 +783,11 @@
         }
 
         try {
-          const pdf = await loadingTask.promise;
+          const pdf = await waitWithTimeout(
+            loadingTask.promise,
+            PDF_RENDER_TIMEOUT_MS,
+            'PDF.js loading timed out'
+          );
           return { pdf, loadingTask };
         } catch(err){
           if (typeof loadingTask?.destroy === 'function'){
@@ -774,7 +813,7 @@
         } catch(err){
           lastError = err;
           const message = String(err && err.message ? err.message : err || '');
-          const workerHint = /worker/i.test(message) || /Module instantiation/i.test(message);
+          const workerHint = /worker/i.test(message) || /Module instantiation/i.test(message) || /timed\s*out/i.test(message);
           if (attempt === 0){
             console.warn('PDF.js worker attempt nieudany, próbuję bez workera.', err);
             if (!workerHint){
