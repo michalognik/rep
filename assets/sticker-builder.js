@@ -2353,12 +2353,97 @@
         return;
       }
 
+      const baseSize = Number.isFinite(Number(f.size)) ? Number(f.size) : 0;
+      const baseType = f.type || (isPDF ? 'application/pdf' : '');
+      const baseName = name || '';
+
+      const applyPdfPreview = (rendered, overrides={})=>{
+        if (!rendered || !rendered.previewImage){ throw new Error('Brak obrazu podglądu PDF.'); }
+        const {
+          name: overrideName,
+          type: overrideType,
+          size: overrideSize,
+          uploadId: overrideUploadId,
+          url: overrideUrl,
+          uploadBytes: overrideUploadBytes,
+          note: overrideNote,
+          preserveTransform = false,
+        } = overrides || {};
+
+        const previewImage = rendered.previewImage;
+        const widthPx = Math.max(1, Math.round((rendered.widthPx) || sourcePixelWidth(previewImage)));
+        const heightPx = Math.max(1, Math.round((rendered.heightPx) || sourcePixelHeight(previewImage)));
+        const resolvedName = (typeof overrideName === 'string' && overrideName)
+          ? overrideName
+          : (uploaded?.name || baseName || '');
+        const resolvedTypeRaw = (typeof overrideType === 'string' && overrideType)
+          ? overrideType
+          : (uploaded?.type || baseType || 'application/pdf');
+        const resolvedType = resolvedTypeRaw || 'application/pdf';
+        const overrideSizeNum = Number(overrideSize);
+        const sizeIsValid = Number.isFinite(overrideSizeNum) && overrideSizeNum > 0;
+        const resolvedSize = sizeIsValid
+          ? overrideSizeNum
+          : (Number.isFinite(uploaded?.size) ? uploaded.size : baseSize);
+        const overrideUploadIdNum = Number(overrideUploadId);
+        const resolvedUploadId = Number.isFinite(overrideUploadIdNum)
+          ? overrideUploadIdNum
+          : (uploaded?.uploadId || null);
+        const resolvedUrl = (typeof overrideUrl === 'string' && overrideUrl)
+          ? overrideUrl
+          : (uploaded?.url || null);
+        const overrideUploadBytesNum = Number(overrideUploadBytes);
+        const uploadBytesValid = Number.isFinite(overrideUploadBytesNum) && overrideUploadBytesNum > 0;
+        const resolvedUploadBytes = uploadBytesValid
+          ? overrideUploadBytesNum
+          : (Number.isFinite(resolvedSize) && resolvedSize > 0 ? resolvedSize : (uploaded?.uploadBytes || 0));
+
+        const resolvedPages = Number.isFinite(rendered.pageCount) && rendered.pageCount > 0
+          ? Math.round(rendered.pageCount)
+          : 0;
+        const pdfMeta = { workerDisabled: !!rendered.workerDisabled };
+        if (resolvedPages > 0){ pdfMeta.numPages = resolvedPages; }
+
+        uploaded = {
+          name: resolvedName,
+          type: resolvedType,
+          size: resolvedSize || 0,
+          dataURL: rendered.previewDataURL || uploaded?.dataURL || null,
+          img: previewImage,
+          pdf: pdfMeta,
+          uploadId: resolvedUploadId,
+          url: resolvedUrl,
+          uploadBytes: resolvedUploadBytes || 0
+        };
+
+        if (fName) fName.textContent = resolvedName || 'brak pliku';
+        if (!preserveTransform){
+          const initScale = initialImageScale(previewImage);
+          transform = { scale:initScale, offsetX:0, offsetY:0, rotDeg:0 };
+        }
+        const noteText = (typeof overrideNote === 'string' && overrideNote)
+          ? overrideNote
+          : (rendered.note || '');
+        const label = noteText || pdfSummaryLabel(uploaded.pdf);
+        updateFileMeta(widthPx, heightPx, resolvedType, resolvedSize, label);
+        setToolTarget('image');
+        requestDraw();
+        updatePriceAndJSON();
+      };
+
       let pdfRenderResult = null;
       if (isPDF){
         showPdfProgress(true);
         setPdfProgress(4);
         try{
           pdfRenderResult = await renderPdfPreviewFromFile(f, { onProgress: setPdfProgress });
+          applyPdfPreview(pdfRenderResult, {
+            name: baseName,
+            type: baseType || 'application/pdf',
+            size: baseSize,
+            uploadBytes: baseSize,
+            note: pdfRenderResult?.note || ''
+          });
         }catch(err){
           console.error('PDF preview error:', err);
           uploadMessage('Nie udało się przygotować podglądu PDF. Sprawdź plik lub prześlij go jako PNG.');
@@ -2379,12 +2464,16 @@
         return;
       }
 
-      const uploadedSize = uploadInfo.size || f.size || 0;
-      const uploadedType = uploadInfo.type || f.type || '';
+      const uploadedSizeCandidate = Number(uploadInfo.size);
+      const uploadedSize = Number.isFinite(uploadedSizeCandidate) && uploadedSizeCandidate >= 0
+        ? uploadedSizeCandidate
+        : (Number.isFinite(Number(f.size)) ? Number(f.size) : baseSize || 0);
+      const uploadedType = uploadInfo.type || f.type || baseType || '';
       const uploadedUrl  = uploadInfo.url || '';
-      const uploadedId   = uploadInfo.uploadId || 0;
+      const uploadedIdCandidate = Number(uploadInfo.uploadId);
+      const uploadedId   = Number.isFinite(uploadedIdCandidate) ? uploadedIdCandidate : 0;
       const serverName   = (uploadInfo && uploadInfo.name) ? String(uploadInfo.name) : '';
-      const finalName    = serverName || name || '';
+      const finalName    = serverName || name || baseName || '';
 
       if (uploadSummary){
         const label = finalName || 'Plik';
@@ -2392,36 +2481,6 @@
       }
 
       if (fName) fName.textContent = finalName || 'brak pliku';
-
-      const finalizePdfUpload = ({ previewImage, previewDataURL, pxW, pxH, pageCount, workerDisabled, note })=>{
-        if (!previewImage){ throw new Error('Brak obrazu podglądu PDF.'); }
-        const widthPx = Math.max(1, Math.round(pxW || sourcePixelWidth(previewImage)));
-        const heightPx = Math.max(1, Math.round(pxH || sourcePixelHeight(previewImage)));
-        const resolvedPages = Number.isFinite(pageCount) && pageCount > 0 ? Math.round(pageCount) : 1;
-        const pdfMeta = {
-          workerDisabled: !!workerDisabled,
-        };
-        if (resolvedPages > 0){ pdfMeta.numPages = resolvedPages; }
-        uploaded = {
-          name: finalName,
-          type:(uploadedType || 'application/pdf'),
-          size:uploadedSize,
-          dataURL: previewDataURL || null,
-          img: previewImage,
-          pdf: pdfMeta,
-          uploadId:uploadedId,
-          url:uploadedUrl,
-          uploadBytes:uploadedSize
-        };
-        if (fName) fName.textContent = finalName || 'brak pliku';
-        const initScale = initialImageScale(uploaded.img);
-        transform = { scale:initScale, offsetX:0, offsetY:0, rotDeg:0 };
-        const label = note || pdfSummaryLabel(uploaded.pdf);
-        updateFileMeta(widthPx, heightPx, (uploadedType || 'application/pdf'), uploadedSize, label);
-        setToolTarget('image');
-        requestDraw();
-        updatePriceAndJSON();
-      };
 
       if (isPDF){
         if (!pdfRenderResult || !pdfRenderResult.previewImage){
@@ -2432,14 +2491,15 @@
           return;
         }
         try{
-          finalizePdfUpload({
-            previewImage: pdfRenderResult.previewImage,
-            previewDataURL: pdfRenderResult.previewDataURL,
-            pxW: pdfRenderResult.widthPx,
-            pxH: pdfRenderResult.heightPx,
-            pageCount: pdfRenderResult.pageCount,
-            workerDisabled: pdfRenderResult.workerDisabled,
-            note: pdfRenderResult.note,
+          applyPdfPreview(pdfRenderResult, {
+            name: finalName,
+            type: uploadedType || 'application/pdf',
+            size: uploadedSize,
+            uploadId: uploadedId,
+            url: uploadedUrl,
+            uploadBytes: uploadedSize,
+            note: pdfRenderResult?.note || '',
+            preserveTransform: true,
           });
         }catch(err){
           console.error('PDF finalize error:', err);
