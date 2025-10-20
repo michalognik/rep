@@ -2353,8 +2353,28 @@
         return;
       }
 
+      let pdfRenderResult = null;
+      if (isPDF){
+        showPdfProgress(true);
+        setPdfProgress(4);
+        try{
+          pdfRenderResult = await renderPdfPreviewFromFile(f, { onProgress: setPdfProgress });
+        }catch(err){
+          console.error('PDF preview error:', err);
+          uploadMessage('Nie udało się przygotować podglądu PDF. Sprawdź plik lub prześlij go jako PNG.');
+          clearImage({ keepSummary:true });
+          showPdfProgress(false);
+          setPdfProgress(0);
+          return;
+        }
+      }
+
       const uploadInfo = await uploadFileToServer(f);
       if (!uploadInfo){
+        if (isPDF){
+          showPdfProgress(false);
+          setPdfProgress(0);
+        }
         clearImage({ keepSummary:true });
         return;
       }
@@ -2404,21 +2424,25 @@
       };
 
       if (isPDF){
-        showPdfProgress(true);
-        setPdfProgress(4);
+        if (!pdfRenderResult || !pdfRenderResult.previewImage){
+          uploadMessage('Nie udało się przygotować podglądu PDF. Sprawdź plik lub prześlij go jako PNG.');
+          clearImage({ keepSummary:true });
+          showPdfProgress(false);
+          setPdfProgress(0);
+          return;
+        }
         try{
-          const rendered = await renderPdfPreviewFromFile(f, { onProgress: setPdfProgress });
           finalizePdfUpload({
-            previewImage: rendered.previewImage,
-            previewDataURL: rendered.previewDataURL,
-            pxW: rendered.widthPx,
-            pxH: rendered.heightPx,
-            pageCount: rendered.pageCount,
-            workerDisabled: rendered.workerDisabled,
-            note: rendered.note,
+            previewImage: pdfRenderResult.previewImage,
+            previewDataURL: pdfRenderResult.previewDataURL,
+            pxW: pdfRenderResult.widthPx,
+            pxH: pdfRenderResult.heightPx,
+            pageCount: pdfRenderResult.pageCount,
+            workerDisabled: pdfRenderResult.workerDisabled,
+            note: pdfRenderResult.note,
           });
         }catch(err){
-          console.error('PDF preview error:', err);
+          console.error('PDF finalize error:', err);
           uploadMessage('Nie udało się przygotować podglądu PDF. Sprawdź plik lub prześlij go jako PNG.');
           clearImage({ keepSummary:true });
         }finally{
