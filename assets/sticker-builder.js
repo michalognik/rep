@@ -715,6 +715,7 @@
       }
       progress(12);
       const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
       progress(20);
 
       const attemptLoading = async(disableWorkers)=>{
@@ -725,7 +726,7 @@
           } catch(err){ console.warn('Nie udało się wyłączyć workera PDF.js', err); }
         }
 
-        const loadingTask = pdfjsLib.getDocument({ data: buffer });
+        const loadingTask = pdfjsLib.getDocument({ data: bytes });
         if (loadingTask){
           const progressHandler = (evt)=>{
             if (!evt || !evt.total) return;
@@ -834,11 +835,22 @@
           previewImage = null;
         }
       }
+      if (!previewImage && typeof createImageBitmap === 'function'){
+        try {
+          previewImage = await createImageBitmap(canvas);
+        } catch(err){
+          console.warn('PDF preview bitmap decode failed:', err);
+        }
+      }
+      if (!previewImage && canvas){
+        previewImage = canvas;
+      }
       if (!previewImage){
         throw new Error('Nie udało się przygotować podglądu PDF.');
       }
       progress(100);
       return {
+        previewCanvas: canvas,
         previewImage,
         previewDataURL: dataURL || null,
         widthPx: canvas.width,
@@ -2358,7 +2370,9 @@
       const baseName = name || '';
 
       const applyPdfPreview = (rendered, overrides={})=>{
-        if (!rendered || !rendered.previewImage){ throw new Error('Brak obrazu podglądu PDF.'); }
+        if (!rendered || (!rendered.previewImage && !rendered.previewCanvas)){
+          throw new Error('Brak obrazu podglądu PDF.');
+        }
         const {
           name: overrideName,
           type: overrideType,
@@ -2370,9 +2384,10 @@
           preserveTransform = false,
         } = overrides || {};
 
-        const previewImage = rendered.previewImage;
-        const widthPx = Math.max(1, Math.round((rendered.widthPx) || sourcePixelWidth(previewImage)));
-        const heightPx = Math.max(1, Math.round((rendered.heightPx) || sourcePixelHeight(previewImage)));
+        const previewSource = rendered.previewCanvas || rendered.previewImage;
+        if (!previewSource){ throw new Error('Brak źródła obrazu podglądu PDF.'); }
+        const widthPx = Math.max(1, Math.round((rendered.widthPx) || sourcePixelWidth(previewSource)));
+        const heightPx = Math.max(1, Math.round((rendered.heightPx) || sourcePixelHeight(previewSource)));
         const resolvedName = (typeof overrideName === 'string' && overrideName)
           ? overrideName
           : (uploaded?.name || baseName || '');
@@ -2409,7 +2424,7 @@
           type: resolvedType,
           size: resolvedSize || 0,
           dataURL: rendered.previewDataURL || uploaded?.dataURL || null,
-          img: previewImage,
+          img: previewSource,
           pdf: pdfMeta,
           uploadId: resolvedUploadId,
           url: resolvedUrl,
@@ -2418,7 +2433,7 @@
 
         if (fName) fName.textContent = resolvedName || 'brak pliku';
         if (!preserveTransform){
-          const initScale = initialImageScale(previewImage);
+          const initScale = initialImageScale(previewSource);
           transform = { scale:initScale, offsetX:0, offsetY:0, rotDeg:0 };
         }
         const noteText = (typeof overrideNote === 'string' && overrideNote)
@@ -2483,7 +2498,7 @@
       if (fName) fName.textContent = finalName || 'brak pliku';
 
       if (isPDF){
-        if (!pdfRenderResult || !pdfRenderResult.previewImage){
+        if (!pdfRenderResult || (!pdfRenderResult.previewImage && !pdfRenderResult.previewCanvas)){
           uploadMessage('Nie udało się przygotować podglądu PDF. Sprawdź plik lub prześlij go jako PNG.');
           clearImage({ keepSummary:true });
           showPdfProgress(false);
