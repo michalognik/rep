@@ -368,6 +368,70 @@
     const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
     const byId = (id)=> document.getElementById(id);
     const stbRoot = byId('stb-root');
+    let cachedCartForm = null;
+
+    function rememberCartForm(form){
+      if (form && document.contains(form)){
+        cachedCartForm = form;
+        return form;
+      }
+      return null;
+    }
+
+    function resolveCartForm(){
+      if (cachedCartForm && document.contains(cachedCartForm)){
+        return cachedCartForm;
+      }
+      cachedCartForm = null;
+
+      let form = null;
+
+      if (stbRoot){
+        form = stbRoot.closest('form');
+        if (form && document.contains(form)){
+          return rememberCartForm(form);
+        }
+
+        const localAddBtn = stbRoot.querySelector('.single_add_to_cart_button');
+        if (localAddBtn){
+          const localForm = localAddBtn.closest('form');
+          if (localForm && document.contains(localForm)){
+            return rememberCartForm(localForm);
+          }
+        }
+      }
+
+      form = document.querySelector('form.cart');
+      if (form && document.contains(form)){
+        return rememberCartForm(form);
+      }
+
+      form = document.querySelector('form.variations_form');
+      if (form && form.querySelector('.single_add_to_cart_button') && document.contains(form)){
+        return rememberCartForm(form);
+      }
+
+      const globalAdd = document.querySelector('.single_add_to_cart_button');
+      if (globalAdd){
+        const globalForm = globalAdd.closest('form');
+        if (globalForm && document.contains(globalForm)){
+          return rememberCartForm(globalForm);
+        }
+      }
+
+      const forms = Array.from(document.querySelectorAll('form'));
+      for (const candidate of forms){
+        if (!candidate) continue;
+        if (!document.contains(candidate)) continue;
+        if (candidate.querySelector('[name="add-to-cart"]')){
+          return rememberCartForm(candidate);
+        }
+      }
+
+      return null;
+    }
+
+    window.addEventListener('pageshow', ()=>{ cachedCartForm = null; });
 
     /* ===== Canvas (retina) ===== */
     const canvas = byId('stb-canvas');
@@ -3410,7 +3474,7 @@
       }
 
       // Payload do Woo (w PLN)
-      const form = document.querySelector('form.cart');
+      const form = resolveCartForm();
       if (form){
         let hidden = form.querySelector(`input[name="${FIELD}"]`);
         if (!hidden){ hidden = document.createElement('input'); hidden.type='hidden'; hidden.name=FIELD; form.appendChild(hidden); }
@@ -4088,7 +4152,7 @@
 
     /* ===== Koszyk ===== */
     const handleAddToCart = ()=>{
-      const form = document.querySelector('form.cart');
+      const form = resolveCartForm();
       if (!form){ alert('Nie znaleziono formularza koszyka.'); return; }
       updatePriceAndJSON();
       let goCart = form.querySelector('input[name="stb_go_cart"]');
